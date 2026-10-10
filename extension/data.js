@@ -112,15 +112,17 @@
     "HomeTimeline", "HomeLatestTimeline", "UserByScreenName", "UserByRestId",
     "UserTweets", "UserTweetsAndReplies", "UserMedia", "TweetDetail", "SearchTimeline",
     "Followers", "Following", "BlueVerifiedFollowers", "FollowersYouKnow",
-    "ListLatestTweetsTimeline", "CommunityTweetsTimeline", "CommunityMediaTimeline"
+    "ListLatestTweetsTimeline", "CommunityTweetsTimeline", "CommunityMediaTimeline",
+    "SidebarUserRecommendations"
   ]);
-  function isApiUrl(value, base) {
+  function isApiUrl(value, base, method = "GET") {
     try {
       const url = new URL(value, base);
+      const verb = String(method).toUpperCase();
       return url.protocol === "https:" &&
         /^(?:(?:www|api)\.)?(?:x\.com|twitter\.com)$/.test(url.hostname) &&
-        (userOperations.has(url.pathname.match(/^\/i\/api\/graphql\/[^/]+\/([^/]+)$/)?.[1]) ||
-          /^\/(?:i\/api\/)?1\.1\/(?:users\/(?:show|lookup)|followers\/list|friends\/list)\.json$/.test(url.pathname));
+        (["GET", "POST"].includes(verb) && userOperations.has(url.pathname.match(/^\/i\/api\/graphql\/[^/]+\/([^/]+)$/)?.[1]) ||
+          verb === "GET" && /^\/(?:i\/api\/)?1\.1\/(?:users\/(?:show|lookup)|followers\/list|friends\/list)\.json$/.test(url.pathname));
     } catch {
       return false;
     }

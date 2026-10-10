@@ -68,7 +68,7 @@
       const pending = Reflect.apply(originalFetch, this, args);
       try {
         const url = typeof args[0] === "string" || args[0] instanceof URL ? String(args[0]) : args[0]?.url;
-        if (String(args[1]?.method ?? args[0]?.method ?? "GET").toUpperCase() === "GET" && isApiUrl(url, location.href)) {
+        if (isApiUrl(url, location.href, args[1]?.method ?? args[0]?.method ?? "GET")) {
           pending.then(response => {
             if (response.ok) return response.clone().json().then(payload => {
               if (requestEpoch === epoch) consume(payload);
@@ -93,7 +93,7 @@
   XMLHttpRequest.prototype.send = function (...args) {
     const requestEpoch = epoch;
     const request = xhrUrls.get(this);
-    if (request?.method === "GET" && isApiUrl(request.url, location.href)) {
+    if (request && isApiUrl(request.url, location.href, request.method)) {
       this.addEventListener("loadend", () => {
         try {
           if (requestEpoch !== epoch || this.status < 200 || this.status >= 300) return;

@@ -67,7 +67,7 @@
   nativeName.addEventListener('pointerenter', () => { nativeTimer = setTimeout(() => nativeCard.hidden = false, 150); });
   nativeName.addEventListener('pointerleave', () => { clearTimeout(nativeTimer); nativeCard.hidden = true; });
   document.querySelector('#fetch').onclick = async () => {
-    const response = await fetch('/i/api/graphql/fixture/HomeTimeline');
+    const response = await fetch('/i/api/graphql/fixture/HomeTimeline', {method: 'POST'});
     const payload = await response.json();
     document.querySelector('#response-state').textContent = payload.data ? '页面仍能完整读取原始响应' : '读取失败';
   };

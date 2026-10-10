@@ -247,13 +247,33 @@ test("account age shows completed UTC years/months and handles month-end anniver
 });
 
 
-test("private endpoints and POST responses are never cloned or parsed", async () => {
+test("private endpoints, write operations and unsupported verbs are never cloned or parsed", async () => {
   let clones = 0;
   const harness = bridgeHarness(() => Promise.resolve({ok:true,clone(){clones++;throw new Error("must not inspect");}}));
   await harness.window.fetch("/i/api/graphql/test/DmInbox");
-  await harness.window.fetch("/i/api/graphql/test/HomeTimeline", {method:"POST"});
-  await harness.window.fetch({url:"https://x.com/i/api/graphql/test/Followers",method:"POST"});
-  const xhr=new harness.XHR();xhr.open("POST","/i/api/graphql/test/Followers");xhr.send();
+  await harness.window.fetch("/i/api/graphql/test/CreateTweet", {method:"POST"});
+  await harness.window.fetch({url:"https://x.com/i/api/graphql/test/Followers",method:"DELETE"});
+  const xhr=new harness.XHR();xhr.open("POST","/i/api/graphql/test/CreateTweet");xhr.send();
   assert.equal(xhr.events.size,0);
   await settle();assert.equal(clones,0);
+});
+
+
+test("X read queries accept POST as well as GET without reading request bodies",async()=>{
+ const url="https://x.com/i/api/graphql/test/HomeTimeline";
+ const payload={rest_id:"1",core:{screen_name:"Alice"},relationship_counts:{followers:100}};
+ for(const input of [url,{url,method:"POST"}]) {
+  const response=new Response(JSON.stringify(payload));const promise=Promise.resolve(response);let calls=0;
+  const harness=bridgeHarness(()=>{calls++;return promise;});
+  assert.equal(harness.window.fetch(input,{method:"POST",get body(){throw new Error("must not read body");}}),promise);
+  await waitFor(()=>harness.posts.some(message=>message.type==="users"));
+  assert.equal(calls,1);assert.equal(harness.posts.find(m=>m.type==="users").users[0].followersCount,100);
+  assert.deepEqual(await response.json(),payload);
+ }
+ const harness=bridgeHarness(()=>Promise.resolve());const xhr=new harness.XHR();
+ xhr.open("POST",url);xhr.send();xhr.finish(payload,"json");
+ assert.equal(harness.posts.find(m=>m.type==="users").users[0].followersCount,100);
+ assert.equal(data.isApiUrl(url,"https://x.com/home","POST"),true);
+ assert.equal(data.isApiUrl("/i/api/graphql/test/SidebarUserRecommendations","https://x.com/home","GET"),true);
+ assert.equal(data.isApiUrl("/i/api/1.1/users/show.json","https://x.com/home","POST"),false);
 });
