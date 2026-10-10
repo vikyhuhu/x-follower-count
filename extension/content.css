@@ -1,0 +1,33 @@
+.xfc-name-row {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  min-width: 0;
+}
+
+.xfc-name-link {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.xfc-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-inline-start: 6px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #e8f4fd;
+  color: #08679d;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+:root[data-xfc-theme="dark"] .xfc-badge {
+  background: #153349;
+  color: #8bd0fa;
+}

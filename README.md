@@ -1,0 +1,62 @@
+# X 粉丝数
+
+一个可本地加载的 Chrome Manifest V3 扩展。读取 X 页面自身 Fetch / XHR 响应中已有的粉丝数，在时间线作者、用户列表和具有独立用户链接的引用作者名字旁显示蓝色标签。
+
+支持亮色 / 暗色页面、动态加载和列表节点复用。当前版本：**1.0.1**。
+
+## 安装
+
+1. 在仓库页面点击 **Code → Download ZIP**，解压下载的源码。也可以运行 `git clone https://github.com/vikyhuhu/x-follower-count.git`。
+2. 在 Chrome 地址栏输入 `chrome://extensions`，打开右上角「开发者模式」。
+3. 点击「加载已解压的扩展程序」，选择解压后项目内的 **extension 文件夹**（其中包含 manifest.json）。下载 GitHub 源码 ZIP 时，通常是 `x-follower-count-main/extension`。
+4. 重新加载已打开的 X 页面，然后正常浏览或滚动时间线、粉丝 / 关注列表。
+
+这是本地加载的扩展，尚未发布到 Chrome 应用商店。更新时覆盖扩展文件，先在扩展管理页点击此插件的「重新加载」，再刷新 X。
+
+例如显示 `粉丝 17.4万`、`粉丝 1,574`、`粉丝 0`。将鼠标停在标签上可看完整数字。支持亮色和暗色页面，Chrome 最低版本为 111。
+
+## 数据和权限
+
+- 只在 `x.com` / `www.x.com` / `twitter.com` / `www.twitter.com` 的 HTTPS 页面运行。
+- 仅查看 X API 路径下已经发生的响应，不新增请求，也不读取或保存请求头、Cookie、登录凭证。
+- 支持用户对象的 `legacy.screen_name` 或 `core.screen_name`，读取当前 X 响应中的 `relationship_counts.followers`，同时兼容 `legacy.followers_count` 等旧字段。不会把 `relationship_counts.following`（关注数）或「认证粉丝数」当成总粉丝数。
+- 只将帐号名和数字传给页面内的标签脚本；不上传数据，不持久保存。每个页面最多保留 10,000 个帐号，刷新后重建。
+- 插件的网络脚本在页面 MAIN 环境中运行，因此 X 页面可以访问或干预它；标签是浏览辅助信息，不应视为独立认证的数据。
+
+## 使用边界和排查
+
+粉丝数反映当前页面最近收到的响应，并非独立实时查询。响应缺少粉丝数时，不显示标签，不猜测数字。安装前已经加载的数据需要刷新页面才能捕获。
+
+X 的接口字段和 DOM 结构可能变化。当前实现针对 `User-Name`、`UserName`、`UserCell` 名称区域；普通正文中的 @提及和没有独立用户链接的引用卡片不会加标签。若某个位置不显示，先确认扩展已启用、站点访问权限允许 X、页面已刷新；再检查该页面的响应是否包含粉丝数字段。
+
+如需排查接口兼容性，只提供脱敏后的单个用户对象结构和相关名称区域的 HTML；不要提供请求头、Cookie、完整 HAR 或登录凭证。
+
+## 开发和验证
+
+扩展是原生 JS / CSS，没有生产依赖，也没有构建步骤。按 [Chrome 官方 content_scripts 文档](https://developer.chrome.com/docs/extensions/reference/manifest/content-scripts) 声明在 `document_start` 注入的 MAIN / ISOLATED 脚本。
+
+```sh
+pnpm test
+pnpm package
+```
+
+浏览器测试使用 Python Playwright，在临时浏览器配置中真正加载 extension，通过拦截路由返回合成 X 页面及 API 响应，不访问真实 X 帐号：
+
+```sh
+python3 -m venv .test-venv
+.test-venv/bin/python -m pip install -r requirements-dev.txt
+.test-venv/bin/python -m playwright install chromium
+.test-venv/bin/python tests/browser_test.py
+```
+
+也可通过 `CHROMIUM_EXECUTABLE` 指定支持命令行加载扩展的 Chromium / Chrome for Testing 可执行文件。已有 Python Playwright 环境可直接运行 `pnpm test:browser`。
+
+浏览器检查包括原始响应保留、Fetch / XHR、动态新增、节点复用、数字更新、引用作者、零粉丝、缺失字段、键盘和桌面 / 移动端布局。结果与截图输出到 test-results。真实登录 X 的兼容性需在安装后实际确认；合成页面测试不能代替这一项。
+
+1.0.1 验证（2026-10-10）：10 项 Node 测试通过；在 Chrome for Testing 151.0.7922.34 中加载扩展，合成页面浏览器检查通过。已检查桌面亮色、暗色及 390px 宽度长名称布局，并覆盖 X 默认纵向容器的同行标签回归。另在实际登录的 X 时间线和推荐用户列表中确认显示，并核对时间线标签与 HomeTimeline 响应中的完整粉丝数一致。粉丝 / 关注列表专属页面尚未单独实测；其他页面和今后的 X 改版需要重新确认。
+
+打包产物为 `dist/x-follower-count-1.0.1.zip`。这是另行运行打包命令生成的安装包：解压后直接选择包含 manifest.json 的 x-follower-count 文件夹。包内仅包含扩展所需的五个文件、安装说明和许可证。
+
+## 许可证
+
+[MIT](LICENSE)。本项目与 X / Twitter 没有官方关联。

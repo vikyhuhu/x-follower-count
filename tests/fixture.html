@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>X 粉丝数 · 本地测试数据</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; color: #0f1419; background: #fff; font: 15px/1.5 system-ui,sans-serif; }
+  main { max-width: 600px; margin: auto; border-inline: 1px solid #eff3f4; }
+  h1 { padding: 16px; font-size: 20px; margin: 0; }
+  .notice { padding: 0 16px 16px; margin: 0; color: #536471; }
+  .controls { padding: 12px 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  button { font: inherit; border: 1px solid #cfd9de; border-radius: 20px; padding: 6px 12px; background: transparent; color: inherit; cursor: pointer; }
+  button:focus-visible, a:focus-visible { outline: 2px solid #1d9bf0; outline-offset: 2px; }
+  article, .cell { padding: 16px; border-top: 1px solid #eff3f4; }
+  [data-testid="User-Name"] { display: flex; gap: 8px; align-items: center; min-width: 0; }
+  /* X's shared container class defaults to a column even around one name link. */
+  .name-group { display: flex; flex-direction: column; min-width: 0; }
+  a { color: inherit; text-decoration: none; }
+  .name-group > a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+  .handle { color: #536471; white-space: nowrap; }
+  .check { color: #1d9bf0; }
+  p { margin: 8px 0; }
+  .cell .handle { display: block; }
+  .quote { border: 1px solid #cfd9de; border-radius: 12px; padding: 12px; margin-top: 12px; }
+  body.dark { background: #15202b; color: #f7f9f9; }
+  body.dark main, body.dark article, body.dark .cell { border-color: #38444d; }
+</style>
+<main>
+  <h1>X 粉丝数 · 本地验证</h1>
+  <p class="notice">以下帐号及数字均为测试数据。</p>
+  <div class="controls">
+    <button id="fetch">载入时间线</button>
+    <button id="xhr">载入用户列表</button>
+    <button id="theme">切换深色</button>
+    <button id="broken">失败响应</button>
+  </div>
+  <article id="tweet">
+    <div data-testid="User-Name">
+      <div class="name-group"><a href="/Lauren">Lauren <span class="check">✓</span></a></div>
+      <a class="handle" href="/Lauren">@Lauren</a>
+    </div>
+    <p>时间线作者的粉丝数显示在名字旁。</p>
+    <div class="quote" id="quote">
+      <div data-testid="User-Name">
+        <div class="name-group"><a href="/Tim">Tim <span class="check">✓</span></a></div>
+        <a class="handle" href="/Tim">@Tim</a>
+      </div>
+      <p>引用的作者拥有独立的数字。</p>
+    </div>
+  </article>
+  <section aria-label="用户列表">
+    <div class="cell" data-testid="UserCell" id="alice"><div class="name-group"><a href="/Alice">Alice <span class="check">✓</span></a></div><a class="handle" href="/Alice">@Alice</a><p>用户列表也能直接查看。</p></div>
+    <div class="cell" data-testid="UserCell" id="zero"><div class="name-group"><a href="/Zero">Zero</a></div><a class="handle" href="/Zero">@Zero</a><p>零粉丝是有效数字。</p></div>
+    <div class="cell" data-testid="UserCell" id="unknown"><div class="name-group"><a href="/Unknown">Unknown</a></div><a class="handle" href="/Unknown">@Unknown</a><p>响应缺少数字时不显示标签。</p></div>
+    <div class="cell" data-testid="UserCell" id="nested"><div data-testid="UserName"><div class="name-group"><a href="/Metrics">Metrics</a></div><a class="handle" href="/Metrics">@Metrics</a></div><p>嵌套名称结构不应重复。</p></div>
+  </section>
+  <p style="padding:16px" id="response-state" aria-live="polite">等待测试响应</p>
+</main>
+<script>
+  document.querySelector('#fetch').onclick = async () => {
+    const response = await fetch('/i/api/graphql/fixture/HomeTimeline');
+    const payload = await response.json();
+    document.querySelector('#response-state').textContent = payload.data ? '页面仍能完整读取原始响应' : '读取失败';
+  };
+  document.querySelector('#xhr').onclick = () => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '/i/api/graphql/fixture/Followers');
+    xhr.responseType = 'json';
+    xhr.onload = () => { document.querySelector('#response-state').textContent = xhr.response.data ? 'XHR 原始响应完整' : '读取失败'; };
+    xhr.send();
+  };
+  document.querySelector('#theme').onclick = () => document.body.classList.toggle('dark');
+  document.querySelector('#broken').onclick = async () => {
+    const response = await fetch('/i/api/graphql/fixture/Broken');
+    document.querySelector('#response-state').textContent = '失败状态 ' + response.status;
+  };
+</script>
+</html>

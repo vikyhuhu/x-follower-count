@@ -1,0 +1,10 @@
+{
+  "name": "x-follower-count",
+  "version": "1.0.1",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "test:browser": "python3 tests/browser_test.py",
+    "package": "python3 scripts/package.py"
+  }
+}

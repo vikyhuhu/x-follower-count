@@ -1,0 +1,6 @@
+dist/
+test-results/
+__pycache__/
+.test-venv/
+.DS_Store
+*.pyc
