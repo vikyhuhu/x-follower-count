@@ -57,7 +57,7 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
     options = {
         "headless": True,
         "ignore_default_args": ["--disable-extensions"],
-        "args": [f"--disable-extensions-except={ROOT / 'extension'}", f"--load-extension={ROOT / 'extension'}"],
+        "args": [f"--disable-extensions-except={EXTENSION}", f"--load-extension={EXTENSION}"],
         "viewport": {"width": 1280, "height": 960},
         "device_scale_factor": 1,
     }
@@ -277,7 +277,7 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
         page.locator("#tier8").evaluate("node => node.querySelectorAll('a').forEach(a => {a.href='/Zero'; a.textContent='Zero';})")
         expect(page.locator("#tier8 .xfc-badge")).to_have_attribute("data-xfc-tier", "small")
         # Successful responses can change relationships without changing follower count.
-        for following, followed_by, text in [(True, True, "互相关注新号"), (False, True, "关注了你新号"), (False, False, "新号")]:
+        for following, followed_by, text in [(True, True, "互相关注新号"), (False, True, "关注了你新号"), (True, False, "你已关注新号"), (False, False, "新号")]:
             PAYLOAD["data"]["entries"][2] = {"core": {"screen_name": "Alice"}, "relationship_perspectives": {"following": following, "followed_by": followed_by}}
             page.get_by_role("button", name="载入用户列表").click()
             expect(page.locator("#alice .xfc-metadata")).to_have_text(text)
@@ -299,9 +299,10 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
         expect(page.locator(".xfc-metadata")).to_have_count(0)
         page.get_by_role("button", name="载入用户列表").click()
         expect(page.locator("#tweet > [data-testid='User-Name'] .xfc-metadata")).to_have_text("互相关注3年8个月")
+        expect(page.locator("[data-xfc-kind=ratio]")).to_have_count(0)
         assert not errors, errors
         assert not failures, failures
-        assert len(requests) == 13, f"Unexpected additional requests: {requests}"
+        assert len(requests) == 14, f"Unexpected additional requests: {requests}"
         summary = {
             "result": "passed", "browser": context.browser.version,
             "mode": "actual unpacked MV3 extension, synthetic X page and API responses",

@@ -24,7 +24,7 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-privacy-") 
     worker=context.service_workers[0] if context.service_workers else context.wait_for_event("serviceworker")
     extension_id=worker.url.split('/')[2]
     popup=context.new_page();popup.goto(f"chrome-extension://{extension_id}/popup.html")
-    for label in ["开启本机粉丝趋势记录","认证状态","含图片／视频的帖数","专业账号类别","个人网站"]:
+    for label in ["开启本机粉丝趋势记录","认证状态","含图片/视频的帖数","专业账号类别","个人网站"]:
         expect(popup.get_by_label(label,exact=True)).to_be_checked()
     expect(popup.locator("fieldset .note")).to_contain_text("新安装默认开启")
     badge.hover();expect(page.locator('.xfc-bar-value')).to_have_text('100')

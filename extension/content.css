@@ -124,8 +124,8 @@
 .xfc-title-row h2 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .xfc-title-row .xfc-relation { flex: 0 0 auto; }
 .xfc-card-header { margin-bottom: 12px; }
-.xfc-facts { display: grid; grid-template-columns: 84px minmax(0,1fr); gap: 6px 8px; margin: 0; }
-.xfc-facts dt { color: var(--xfc-muted); } .xfc-facts dd { align-self: center; margin: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; } .xfc-date { font-size: 11px; }
+.xfc-facts { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 6px 8px; margin: 0; }
+.xfc-facts dt { white-space: nowrap; color: var(--xfc-muted); } .xfc-facts dd { align-self: center; margin: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; } .xfc-date { font-size: 11px; }
 .xfc-chart-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--xfc-border); }
 .xfc-chart-section h3 { margin: 0 0 8px; font-size: 12px; }
 .xfc-bars { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); width: 100%; min-height: 134px; }

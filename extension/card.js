@@ -105,14 +105,15 @@
     header.append(identity, close); card.append(header);
     const list = element("dl", "xfc-facts");
     pair(list, "关注数", number(user.followingCount)); pair(list, "粉丝数", number(user.followersCount));
-    const ratio = user.followersCount === undefined || user.followingCount === undefined ? "—" : user.followingCount === 0 ? "未关注任何账号" : `${Math.round(user.followersCount / user.followingCount).toLocaleString("en-US")} : 1`;
+    const value = user.followersCount / user.followingCount;
+    const ratio = user.followingCount === 0 ? "0" : user.followersCount === undefined || user.followingCount === undefined ? "—" : `${value < 1 ? value.toFixed(1) : Math.round(value).toLocaleString("en-US")}:1`;
     pair(list, "粉关比", ratio); pair(list, "总发帖数", number(user.tweetCount));
+    const options = result.settings ?? history.defaults;
+    if (options.media && user.mediaCount !== undefined) pair(list, "含图片/视频的帖数", number(user.mediaCount));
     const age = config.formatAge(user.createdAt);
     pair(list, "账号年龄", age === "新号" ? `${Math.floor((Date.now() - user.createdAt) / history.DAY)}天` : age || "—");
     pair(list, "注册时间", age ? `${new Date(user.createdAt).toISOString().slice(0, 19).replace("T", " ")} UTC` : "—").className = "xfc-date";
-    const options = result.settings ?? history.defaults;
     if (options.verification && user.verification) pair(list, "认证状态", { blue: "蓝标", business: "企业认证", government: "政府／组织认证", verified: "已认证", none: "未认证" }[user.verification]);
-    if (options.media && user.mediaCount !== undefined) pair(list, "含图片／视频的帖数", number(user.mediaCount));
     if (options.category && user.category) pair(list, "专业账号类别", user.category);
     if (options.website && user.website) {
       const value = pair(list, "个人网站", "");

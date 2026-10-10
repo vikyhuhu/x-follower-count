@@ -73,9 +73,14 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-card-") as 
     status_bounds = status.bounding_box()
     assert abs((title_bounds["y"] + title_bounds["height"]/2) - (status_bounds["y"] + status_bounds["height"]/2)) < 2
     expect(card.locator(".xfc-facts").get_by_text("174,000", exact=True)).to_be_visible()
-    expect(card.get_by_text("544 : 1", exact=True)).to_be_visible()
+    expect(card.get_by_text("544:1", exact=True)).to_be_visible()
     expect(card.get_by_text("1,578", exact=True)).to_be_visible()
     expect(card.get_by_text("专业账号类别", exact=True)).to_be_visible()
+    labels = card.locator(".xfc-facts dt").all_text_contents()
+    assert labels[labels.index("总发帖数") + 1] == "含图片/视频的帖数"
+    media_label = card.locator("dt").filter(has_text="含图片/视频的帖数")
+    assert media_label.evaluate("e => e.scrollWidth <= e.clientWidth && e.getBoundingClientRect().height <= parseFloat(getComputedStyle(e).lineHeight) + 1"), "Media label must fit on one line"
+
     expect(card.locator(".xfc-chart-section")).to_have_count(1)
     expect(card.get_by_role("heading", name="近7天已观察发帖")).to_have_count(0)
     expect(card.get_by_role("button", name="清除此账号记录")).to_have_count(0)
@@ -93,6 +98,11 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-card-") as 
     page.locator("#tweet [data-xfc-kind='new']").hover()
     expect(card).to_be_visible()
     assert card.inner_text() == before, "Every label must open identical details"
+    assert page.locator("#tweet > [data-testid='User-Name'] .xfc-metadata > span").all_text_contents() == ["互相关注", "新号"]
+    for kind in ["mutual"]:
+        trigger=page.locator(f"#tweet > [data-testid='User-Name'] [data-xfc-kind='{kind}']")
+        trigger.hover();expect(card).to_be_visible()
+        assert card.inner_text() == before, "Relationship labels must open the same card"
     page.screenshot(path=str(RESULTS/"card-light.png"))
     expect(card.locator(".xfc-bars")).to_have_attribute("role", "img")
     badge.press("Enter")
@@ -113,6 +123,7 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-card-") as 
     bounds = card.bounding_box()
     assert bounds["x"] >= 0 and bounds["x"] + bounds["width"] <= 320 and bounds["y"] + bounds["height"] <= 720
     assert card.evaluate("e => e.scrollWidth <= e.clientWidth")
+    assert media_label.evaluate("e => e.scrollWidth <= e.clientWidth && e.getBoundingClientRect().height <= parseFloat(getComputedStyle(e).lineHeight) + 1"), "Media label must stay on one line at 320px"
     for value in card.locator(".xfc-bar-value").all():
         assert value.evaluate("e => e.scrollWidth <= e.clientWidth")
     page.screenshot(path=str(RESULTS/"card-mobile.png"))
@@ -145,7 +156,7 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-card-") as 
     # A user with zero following has no infinite ratio and explicitly known no relation.
     page.keyboard.press("Escape")
     page.locator("#quote .xfc-badge").hover()
-    expect(card.get_by_text("未关注任何账号", exact=True)).to_be_visible()
+    expect(card.locator("dt").filter(has_text="粉关比").locator("xpath=following-sibling::dd[1]")).to_have_text("0")
     expect(card.get_by_text("双方未关注", exact=True)).to_be_visible()
     # A first-day zero is shown explicitly at the far left, without hover.
     expect(card.locator(".xfc-bar-column")).to_have_count(1)
@@ -162,8 +173,8 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-card-") as 
     popup.on("requestfailed", lambda req: failures.append(req.url))
     popup.goto(f"chrome-extension://{extension_id}/popup.html")
     expect(popup.locator("#summary")).to_contain_text("已记录")
-    expect(popup.get_by_label("含图片／视频的帖数", exact=True)).to_be_checked()
-    popup.get_by_label("含图片／视频的帖数", exact=True).uncheck()
+    expect(popup.get_by_label("含图片/视频的帖数", exact=True)).to_be_checked()
+    popup.get_by_label("含图片/视频的帖数", exact=True).uncheck()
     expect(popup.get_by_role("status")).to_have_text("已保存")
     popup.get_by_role("button", name="清除全部趋势记录", exact=True).click()
     popup.get_by_role("button", name="确认清除", exact=True).click()
@@ -172,8 +183,20 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-card-") as 
     popup.screenshot(path=str(RESULTS/"popup-settings.png"))
     assert not errors, errors
     assert not failures, failures
-    assert len(requests)==7, requests
-    summary={"result":"passed","browser":browser_version,"checks":["native and plugin hover cards stay separate","relationship badge beside name and rounded ratio","identical hover card across labels","precise profile facts and zero following","post statistics and collection removed","bar labels, gaps and first observation at left","zero shown without hover","keyboard","light/dark/320px","page reload and real browser restart","no post body or relationships in storage","single clear removed, all clear works","optional settings","no additional network request"],"page_errors":errors,"failed_requests":failures,"requests":requests}
+    # Loaded followers/following values drive detail ratios without external labels.
+    ratio_value=card.locator("dt").filter(has_text="粉关比").locator("xpath=following-sibling::dd[1]")
+    for followers, following, expected in [(8,10,"0.8:1"),(1,3,"0.3:1"),(0,10,"0.0:1"),(10,10,"1:1"),(659,10,"66:1"),(100,0,"0"),(None,0,"0"),(None,10,"—"),(10,None,"—")]:
+        case={"rest_id":"99","core":{"screen_name":"Lauren","name":"Lauren"},"relationship_perspectives":{"following":True,"followed_by":True},"relationship_counts":{key:value for key,value in [("followers",followers),("following",following)] if value is not None}}
+        payload["data"]["users"]=[case,other]
+        # Fresh page prevents absent fields from retaining a previously observed count.
+        page.reload();page.get_by_role("button",name="载入时间线").click()
+        page.locator('#tweet [data-xfc-kind=mutual]').click()
+        expect(ratio_value).to_have_text(expected)
+        expect(page.locator('[data-xfc-kind=ratio]')).to_have_count(0)
+    assert not errors, errors
+    assert not failures, failures
+    assert len(requests)==25, requests
+    summary={"result":"passed","browser":browser_version,"checks":["native and plugin hover cards stay separate","text relationship badges restored, ratio only in details", "ratio below one has one decimal, zero following is zero, missing stays unknown","identical hover card across labels","precise profile facts and zero following","post statistics and collection removed","bar labels, gaps and first observation at left","zero shown without hover","keyboard","light/dark/320px","page reload and real browser restart","no post body or relationships in storage","single clear removed, all clear works","optional settings","no additional network request"],"page_errors":errors,"failed_requests":failures,"requests":requests}
     (RESULTS/"card-browser-summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2))
     print(json.dumps(summary,ensure_ascii=False,indent=2))
     context.close()
