@@ -90,7 +90,7 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
 
     context.route("**/*", route_request)
     def assert_inline_metadata():
-        geometry = page.locator(".xfc-metadata").evaluate_all("""rows => rows.map(row => {
+        geometry = page.locator(".xfc-labels:not(.xfc-list-labels) > .xfc-metadata").evaluate_all("""rows => rows.map(row => {
           const previous = row.previousElementSibling;
           const a = (previous || row.parentElement).getBoundingClientRect(), b = row.getBoundingClientRect();
           return {anchor: !previous || previous.matches('.xfc-badge'), labelRow: row.parentElement.classList.contains('xfc-labels'), left: b.left, right: b.right, anchorRight: previous ? a.right : a.left, anchorY: a.y+a.height/2, rowY: b.y+b.height/2, viewport: innerWidth};

@@ -52,6 +52,30 @@ test("only X API responses are inspected", () => {
   for (const url of ["https://evilx.com/i/api/test", "https://x.com.evil.test/i/api/test", "/settings", "https://twitter.com/i/api/2/test", "/i/api/graphql/abc/DmInbox", "/i/api/graphql/abc/CreateTweet", "http://x.com/i/api/test", "https://example.com/i/api/graphql/abc"]) assert.equal(data.isApiUrl(url, "https://x.com/home"), false);
 });
 
+test("recommendations, bookmarks and likes deliver user data from a cold cache", async () => {
+  for (const operation of ["ConnectTabTimeline", "Bookmarks", "Likes"]) {
+    for (const method of ["GET", "POST"]) {
+      const payload = { data: { entries: [{ user_results: { result: {
+        rest_id: "123", core: { screen_name: "ListUser", created_at: "2023-11-15T14:05:45Z" },
+        relationship_counts: { followers: 417, following: 80 },
+        relationship_perspectives: { following: true, followed_by: false }
+      } } }] } };
+      let calls = 0;
+      const response = new Response(JSON.stringify(payload));
+      const harness = bridgeHarness(() => { calls++; return Promise.resolve(response); });
+      const delivered = await harness.window.fetch(`/i/api/graphql/test/${operation}`, { method });
+      await waitFor(() => harness.posts.some(message => message.type === "users"));
+      assert.equal(calls, 1);
+      assert.deepEqual(await delivered.json(), payload);
+      const user = harness.posts.find(message => message.type === "users").users[0];
+      assert.equal(user.screenName, "listuser");
+      assert.equal(user.followersCount, 417);
+      assert.equal(user.following, true);
+      assert.equal(user.createdAt, Date.parse("2023-11-15T14:05:45Z"));
+    }
+  }
+});
+
 function bridgeHarness(fetch, extra = {}) {
   const posts = [];
   const listeners = new Map();

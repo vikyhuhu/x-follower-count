@@ -113,7 +113,7 @@
     "UserTweets", "UserTweetsAndReplies", "UserMedia", "TweetDetail", "SearchTimeline",
     "Followers", "Following", "BlueVerifiedFollowers", "FollowersYouKnow",
     "ListLatestTweetsTimeline", "CommunityTweetsTimeline", "CommunityMediaTimeline",
-    "SidebarUserRecommendations"
+    "SidebarUserRecommendations", "ConnectTabTimeline", "Bookmarks", "Likes"
   ]);
   function isApiUrl(value, base, method = "GET") {
     try {

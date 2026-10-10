@@ -1,10 +1,10 @@
 {
   "name": "x-follower-count",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "private": true,
   "scripts": {
     "test": "node --test tests/*.test.cjs",
-    "test:browser": "python3 tests/browser_test.py && python3 tests/card_browser_test.py && python3 tests/privacy_browser_test.py",
+    "test:browser": "python3 tests/browser_test.py && python3 tests/surfaces_browser_test.py && python3 tests/card_browser_test.py && python3 tests/privacy_browser_test.py",
     "package": "python3 scripts/package.py"
   }
 }

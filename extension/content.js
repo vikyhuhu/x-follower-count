@@ -93,8 +93,15 @@
   }
 
   function placeLabels(root, link, row) {
-    if (!root.matches('[data-testid="UserCell"]')) {
+    const cell = root.closest('[data-testid="UserCell"]');
+    row.classList.toggle("xfc-list-labels", !!cell);
+    if (!cell) {
       root.classList.add("xfc-header-row");
+      if (root.lastElementChild !== row) root.append(row);
+      return;
+    }
+    if (root !== cell) {
+      root.classList.add("xfc-list-header");
       if (root.lastElementChild !== row) root.append(row);
       return;
     }
@@ -104,13 +111,11 @@
     let host = link.parentElement;
     while (host !== root && handleLink && !host.contains(handleLink)) host = host.parentElement;
     if (host !== root && handleLink) {
-      // A dedicated list header can hold the labels after name and handle,
-      // without moving X's links or touching the avatar / follow button / bio.
-      host.classList.add("xfc-header-row");
+      // List identities keep their stacked layout; labels get a separate row.
+      host.classList.add("xfc-list-header");
       if (host.lastElementChild !== row) host.append(row);
     } else {
       const tail = handleLink ?? link.parentElement;
-      tail.classList.add("xfc-cell-tail");
       if (tail.nextElementSibling !== row) tail.after(row);
     }
   }
@@ -290,7 +295,7 @@
   runtime.cleanup(() => {
     users.clear(); dirty.clear(); card.hide();
     document.querySelectorAll(".xfc-labels").forEach(node => node.remove());
-    document.querySelectorAll(".xfc-header-row, .xfc-cell-tail").forEach(node => node.classList.remove("xfc-header-row", "xfc-cell-tail"));
+    document.querySelectorAll(".xfc-header-row, .xfc-list-header").forEach(node => node.classList.remove("xfc-header-row", "xfc-list-header"));
   });
   if (document.body) start();
   else document.addEventListener("DOMContentLoaded", start, { once: true, signal: runtime.signal });

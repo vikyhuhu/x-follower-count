@@ -1,7 +1,9 @@
 .xfc-header-row { display: flex !important; flex-direction: row !important; align-items: center !important; flex-wrap: nowrap !important; min-width: 0; max-width: 100%; }
 .xfc-header-row > :not(.xfc-labels) { min-width: 0; flex-shrink: 1; flex-grow: 0 !important; overflow: hidden; text-overflow: ellipsis; }
 .xfc-labels { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 4px; margin-inline-start: 6px; vertical-align: middle; }
-.xfc-cell-tail { display: inline-flex !important; max-width: 100%; vertical-align: middle; }
+.xfc-list-header { display: flex !important; flex-direction: column !important; align-items: stretch !important; min-width: 0; }
+.xfc-list-labels { display: flex; flex-wrap: wrap; align-self: flex-start; flex: 0 1 auto; min-width: 0; max-width: 100%; margin-inline-start: 0; margin-top: 4px; }
+.xfc-list-labels > .xfc-metadata { display: contents; }
 
 .xfc-badge {
   display: inline-flex;
