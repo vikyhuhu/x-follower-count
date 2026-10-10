@@ -1,4 +1,4 @@
-"""Build local-install and Chrome Web Store archives from an explicit allowlist."""
+"""Build one archive for local installation and Chrome Web Store upload from an explicit allowlist."""
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
 import json
@@ -13,18 +13,13 @@ def put(archive, name, content):
     info.compress_type = ZIP_DEFLATED
     info.external_attr = 0o644 << 16
     archive.writestr(info, content)
-for store in (False, True):
-    output = ROOT / "dist" / f"x-follower-count-{version}{'-webstore' if store else ''}.zip"
-    prefix = "" if store else "x-follower-count/"
-    with ZipFile(output, "w") as archive:
-        for name in FILES:
-            put(archive, prefix + name, (ROOT / "extension" / name).read_bytes())
-        put(archive, prefix + "LICENSE", (ROOT / "LICENSE").read_bytes())
-        if not store:
-            guide = (ROOT / "README.md").read_text().replace('src="extension/icons/', 'src="icons/')
-            put(archive, prefix + "安装说明.md", guide.encode())
-            put(archive, prefix + "PRIVACY.md", (ROOT / "PRIVACY.md").read_bytes())
-    with ZipFile(output) as archive:
-        assert archive.testzip() is None
-        assert prefix + "manifest.json" in archive.namelist()
-    print(output)
+output = ROOT / "dist" / f"x-follower-count-{version}.zip"
+with ZipFile(output, "w") as archive:
+    for name in FILES:
+        put(archive, name, (ROOT / "extension" / name).read_bytes())
+    put(archive, "LICENSE", (ROOT / "LICENSE").read_bytes())
+with ZipFile(output) as archive:
+    assert archive.testzip() is None
+    assert set(archive.namelist()) == {*FILES, "LICENSE"}
+    assert "manifest.json" in archive.namelist()
+print(output)

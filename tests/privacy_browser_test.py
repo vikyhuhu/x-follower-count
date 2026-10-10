@@ -1,4 +1,4 @@
-"""Fresh install, explicit consent, storage minimization and real extension reload."""
+"""Fresh defaults, saved choices, storage minimization and real extension reload."""
 import json
 import os
 import tempfile
@@ -22,16 +22,16 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-privacy-") 
     badge=page.locator("#tweet > [data-testid='User-Name'] .xfc-badge")
     expect(badge).to_have_text("粉丝 100")
     worker=context.service_workers[0] if context.service_workers else context.wait_for_event("serviceworker")
-    assert not worker.evaluate("()=>chrome.storage.local.get('xfc-history-v1')")
     extension_id=worker.url.split('/')[2]
     popup=context.new_page();popup.goto(f"chrome-extension://{extension_id}/popup.html")
-    expect(popup.get_by_label("开启本机粉丝趋势记录",exact=True)).not_to_be_checked()
-    popup.get_by_label("开启本机粉丝趋势记录",exact=True).check()
-    expect(popup.get_by_role("status")).to_have_text("已保存")
-    page.get_by_role("button",name="载入时间线").click()
+    for label in ["开启本机粉丝趋势记录","认证状态","含图片／视频的帖数","专业账号类别","个人网站"]:
+        expect(popup.get_by_label(label,exact=True)).to_be_checked()
+    expect(popup.locator("fieldset .note")).to_contain_text("新安装默认开启")
     badge.hover();expect(page.locator('.xfc-bar-value')).to_have_text('100')
     saved=worker.evaluate("()=>chrome.storage.local.get('xfc-history-v1')")['xfc-history-v1']
     assert sorted(saved['users']['1'])==['days','lastSeen','userId']
+    popup.get_by_label("个人网站",exact=True).uncheck()
+    expect(popup.get_by_role("status")).to_have_text("已保存")
     popup.get_by_label("开启本机粉丝趋势记录",exact=True).uncheck()
     expect(popup.get_by_role("status")).to_have_text("已保存")
     payload['relationship_counts']['followers']=101
@@ -44,6 +44,7 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-privacy-") 
     expect(popup.locator('#summary')).to_contain_text('已记录 0 个账号')
     privacy=context.new_page();privacy.goto(f"chrome-extension://{extension_id}/privacy.html")
     expect(privacy.get_by_role('heading',name='X 粉丝数隐私政策',exact=True)).to_be_visible()
+    expect(privacy.locator("body")).to_contain_text("新安装默认开启")
     # Reload from Chrome's real extension manager while the old X page stays alive.
     manager=context.new_page();manager.goto('chrome://extensions')
     toggle=manager.locator('#devMode');toggle.click()
@@ -56,6 +57,10 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-privacy-") 
     assert not errors,errors
     page.reload();page.get_by_role('button',name='载入时间线').click()
     expect(page.locator("#tweet .xfc-badge")).to_have_text('粉丝 101')
+    popup=context.new_page();popup.goto(f"chrome-extension://{extension_id}/popup.html")
+    expect(popup.get_by_label("开启本机粉丝趋势记录",exact=True)).not_to_be_checked()
+    expect(popup.get_by_label("个人网站",exact=True)).not_to_be_checked()
+    page.locator("#tweet .xfc-badge").hover();expect(page.locator('.xfc-bar')).to_have_count(0)
     assert not errors,errors
-    print(json.dumps({'result':'passed','checks':['fresh install does not persist account data','explicit consent through popup','minimal storage schema','disable and clear','offline privacy','real extension reload safely stops old listeners','new page resumes'],'page_errors':errors},ensure_ascii=False))
+    print(json.dumps({'result':'passed','checks':['fresh install defaults all five options on and records first observation','popup discloses recording','disabled choices persist through real extension reload','minimal storage schema','disable and clear','offline privacy','real extension reload safely stops old listeners','new page resumes'],'page_errors':errors},ensure_ascii=False))
     context.close()

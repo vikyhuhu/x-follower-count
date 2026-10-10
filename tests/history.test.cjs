@@ -3,6 +3,15 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs"), vm = require("node:vm"), path = require("node:path");
 const data = require("../extension/data.js"), h = require("../extension/history.js");
 const now = Date.parse("2026-10-10T06:00:00Z"), user = { userId: "123", screenName: "alice", name: "Alice", followersCount: 100, followingCount: 5, following: true, followedBy: true };
+test("fresh install enables every option, while explicit saved choices survive normalization",()=>{
+  const defaults={recording:true,verification:true,media:true,category:true,website:true};
+  assert.deepEqual(h.empty().settings,defaults);
+  assert.deepEqual(h.settings(),defaults);
+  const disabled=Object.fromEntries(Object.keys(defaults).map(key=>[key,false]));
+  assert.deepEqual(h.settings(disabled),disabled);
+  const state=h.empty();state.settings=disabled;h.prune(state,now);
+  assert.deepEqual(state.settings,disabled);
+});
 test("current and legacy profile metadata are independent, safely validated", () => {
   const [result] = data.extractUsers({rest_id:"123", core:{screen_name:"Alice",name:"Alice"},relationship_counts:{following:0,followers:5},tweet_counts:{tweets:10,media_tweets:3},verification:{verified:false},is_blue_verified:true,professional:{category:[{name:"Developer"}]},website:{url:"https://example.com"}});
   assert.equal(result.userId,"123"); assert.equal(result.followingCount,0); assert.equal(result.tweetCount,10); assert.equal(result.mediaCount,3); assert.equal(result.verification,"blue"); assert.equal(result.category,"Developer");
@@ -31,31 +40,31 @@ test("rename uses numeric ID, metadata is not persisted and invalid/expired snap
   assert.equal(Object.keys(state.users["123"].days).length,1);
   h.observe(state,[{...user,userId:"456",followersCount:undefined}],now);assert.equal(state.users["456"],undefined);
 });
-test("background opt-in cannot be changed by pages; concurrent writes, restart and clearing work",async()=>{
+test("background defaults cannot be changed by pages; concurrent writes, restart and clearing work",async()=>{
   let saved={},handler;
   const chrome={runtime:{id:"test",onMessage:{addListener:fn=>handler=fn}},storage:{local:{get:async key=>({[key]:structuredClone(saved[key])}),set:async value=>{await new Promise(r=>setTimeout(r,3));Object.assign(saved,structuredClone(value));},getBytesInUse:async()=>JSON.stringify(saved).length}}};
   const boot=()=>{const ctx=vm.createContext({chrome,Date,URL,__xfcData:data,__xfcHistory:h,importScripts:()=>{}});vm.runInContext(fs.readFileSync(path.resolve(__dirname,"../extension/background.js"),"utf8"),ctx);};
   const send=(type,extra={},ui=false)=>new Promise(resolve=>handler({channel:"xfc-local",type,...extra},{id:"test",url:ui?"chrome-extension://test/popup.html":"https://x.com/home",tab:{id:1}},resolve));
-  boot();await send("observe",{users:[user]});assert.equal(saved["xfc-history-v1"],undefined);
-  assert.equal((await send("status")).settings.recording,false);
-  assert.equal((await send("settings",{settings:{recording:true}})).ok,false);
-  await send("settings",{settings:{recording:true,media:true}},true);
+  boot();assert.equal((await send("status")).settings.recording,true);
+  assert.equal((await send("settings",{settings:{recording:false}})).ok,false);
+  await send("observe",{users:[user]});assert.equal(Object.keys(saved["xfc-history-v1"].users).length,1);
   await Promise.all([send("observe",{users:[user]}),send("observe",{users:[{...user,userId:"456",screenName:"bob"}]})]);
   assert.equal((await send("status")).users,2);boot();
   assert.equal(h.series((await send("get",{userId:"123"})).record).followers.at(-1).count,100);
   assert.equal((await send("clear-all")).ok,false);
   await send("settings",{settings:{recording:false,media:true}},true);
   assert.equal((await send("get",{userId:"123"})).record,null);
+  boot();assert.equal((await send("status")).settings.recording,false);
   await send("observe",{users:[{...user,userId:"789"}]});assert.equal((await send("status")).users,2);
   await send("clear-all",{},true);assert.equal((await send("status")).users,0);assert.equal((await send("status")).settings.media,true);
 });
 test("legacy storage is minimized on first load, without automatically starting recording",async()=>{
-  const legacy=h.empty();h.observe(legacy,[user]);legacy.settings={verification:true};legacy.users["123"].profile={name:"old name"};legacy.users["123"].posts={1:{id:"1"}};
+  const legacy=h.empty();h.observe(legacy,[user]);legacy.settings={recording:false,verification:true,media:false,category:false,website:false};legacy.users["123"].profile={name:"old name"};legacy.users["123"].posts={1:{id:"1"}};
   let saved=legacy,handler;
   const chrome={runtime:{id:"test",onMessage:{addListener:fn=>handler=fn}},storage:{local:{get:async()=>({'xfc-history-v1':structuredClone(saved)}),set:async value=>saved=structuredClone(value['xfc-history-v1']),getBytesInUse:async()=>JSON.stringify(saved).length}}};
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,"../extension/background.js"),"utf8"),{chrome,Date,__xfcData:data,__xfcHistory:h,importScripts:()=>{}});
   await new Promise(resolve=>handler({channel:"xfc-local",type:"status"},{id:"test",url:"chrome-extension://test/popup.html"},resolve));
-  assert.equal(saved.settings.recording,false);assert.equal(saved.users["123"].profile,undefined);assert.equal(saved.users["123"].posts,undefined);
+  assert.deepEqual(saved.settings,legacy.settings);assert.equal(saved.users["123"].profile,undefined);assert.equal(saved.users["123"].posts,undefined);
 });
 test("retention evicts oldest accounts and stays below byte budget",()=>{
   const state=h.empty();
@@ -66,7 +75,7 @@ test("retention evicts oldest accounts and stays below byte budget",()=>{
 });
 test("expiry is written back while recording is disabled without restarting the worker",async()=>{
   let clock=now,saved=h.empty(),handler;
-  h.observe(saved,[user],now);
+  h.observe(saved,[user],now);saved.settings.recording=false;
   const model={...h,prune:state=>h.prune(state,clock)};
   const chrome={runtime:{id:"test",onMessage:{addListener:fn=>handler=fn}},storage:{local:{get:async()=>({'xfc-history-v1':structuredClone(saved)}),set:async value=>saved=structuredClone(value['xfc-history-v1']),getBytesInUse:async()=>JSON.stringify(saved).length}}};
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,"../extension/background.js"),"utf8"),{chrome,Date,__xfcData:data,__xfcHistory:model,importScripts:()=>{}});

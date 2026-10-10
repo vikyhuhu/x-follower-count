@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const DAY = 86400000, KEEP_DAYS = 30, MAX_USERS = 1000, MAX_BYTES = 8 * 1024 * 1024;
-  const defaults = Object.freeze({ recording: false, verification: true, media: false, category: false, website: false });
+  const defaults = Object.freeze({ recording: true, verification: true, media: true, category: true, website: true });
   const validId = value => typeof value === "string" && /^\d{1,40}$/.test(value);
   const validCount = value => Number.isSafeInteger(value) && value >= 0;
   function dayKey(time) { return new Date(time + 8 * 3600000).toISOString().slice(0, 10); }

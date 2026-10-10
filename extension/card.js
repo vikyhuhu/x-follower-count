@@ -112,8 +112,8 @@
     pair(list, "注册时间", age ? `${new Date(user.createdAt).toISOString().slice(0, 19).replace("T", " ")} UTC` : "—").className = "xfc-date";
     const options = result.settings ?? history.defaults;
     if (options.verification && user.verification) pair(list, "认证状态", { blue: "蓝标", business: "企业认证", government: "政府／组织认证", verified: "已认证", none: "未认证" }[user.verification]);
-    if (options.media && user.mediaCount !== undefined) pair(list, "媒体帖数", number(user.mediaCount));
-    if (options.category && user.category) pair(list, "账号自填类别", user.category);
+    if (options.media && user.mediaCount !== undefined) pair(list, "含图片／视频的帖数", number(user.mediaCount));
+    if (options.category && user.category) pair(list, "专业账号类别", user.category);
     if (options.website && user.website) {
       const value = pair(list, "个人网站", "");
       const link = element("a", "", user.website); link.href = user.website; link.target = "_blank"; link.rel = "noopener noreferrer"; value.append(link);

@@ -19,7 +19,7 @@ day=lambda date:(date+timedelta(hours=8)).strftime('%Y-%m-%d')
 counts=[6378,17000,423]
 handles=['demo_creator','demo_builder','demo_reader']
 names=['示例创作者','示例开发者','示例读者']
-users=[{'rest_id':str(i+1),'core':{'screen_name':handle,'name':names[i],'created_at':(now-timedelta(days=[1340,365,40][i])).isoformat()},'relationship_counts':{'followers':counts[i],'following':[234,180,320][i]},'relationship_perspectives':{'following':i==0,'followed_by':i<2},'tweet_counts':{'tweets':[1578,256,35][i]},'is_blue_verified':True} for i,handle in enumerate(handles)]
+users=[{'rest_id':str(i+1),'core':{'screen_name':handle,'name':names[i],'created_at':(now-timedelta(days=[1340,365,40][i])).isoformat()},'relationship_counts':{'followers':counts[i],'following':[234,180,320][i]},'relationship_perspectives':{'following':i==0,'followed_by':i<2},'tweet_counts':{'tweets':[1578,256,35][i],'media_tweets':[45,20,3][i]},'is_blue_verified':True,'professional':{'category':[{'name':'创作者'}]},'website':{'url':'https://example.com'}} for i,handle in enumerate(handles)]
 svg=base64.b64encode((ROOT/'assets/icon.svg').read_bytes()).decode()
 articles=''
 texts=['关注一个账号之前，先看一眼公开资料。粉丝数、关注关系和账号年龄，直接显示在时间线中。','今天分享一个小工具的开发过程。鼠标停在任意标签上，就能查看同一张账号详情卡。','新的账号也可以有好的内容。标签描述数据，内容是否值得关注，由你判断。']
