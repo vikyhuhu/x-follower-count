@@ -17,7 +17,7 @@ payload = {"data": {"entries": [{"user_results": {"result": {
     "relationship_perspectives": {"following": True, "followed_by": True}
 }}}]}}
 errors, failures, requests = [], [], []
-operations = ["ConnectTabTimeline", "Bookmarks", "Likes", "Following"]
+operations = ["ConnectTabTimeline", "UserOriginalsTimeline", "Bookmarks", "Likes", "Following"]
 
 with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-surfaces-") as profile:
     options = {

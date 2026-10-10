@@ -52,8 +52,8 @@ test("only X API responses are inspected", () => {
   for (const url of ["https://evilx.com/i/api/test", "https://x.com.evil.test/i/api/test", "/settings", "https://twitter.com/i/api/2/test", "/i/api/graphql/abc/DmInbox", "/i/api/graphql/abc/CreateTweet", "http://x.com/i/api/test", "https://example.com/i/api/graphql/abc"]) assert.equal(data.isApiUrl(url, "https://x.com/home"), false);
 });
 
-test("recommendations, bookmarks and likes deliver user data from a cold cache", async () => {
-  for (const operation of ["ConnectTabTimeline", "Bookmarks", "Likes"]) {
+test("recommendations, profile originals, bookmarks and likes deliver user data from a cold cache", async () => {
+  for (const operation of ["ConnectTabTimeline", "UserOriginalsTimeline", "Bookmarks", "Likes"]) {
     for (const method of ["GET", "POST"]) {
       const payload = { data: { entries: [{ user_results: { result: {
         rest_id: "123", core: { screen_name: "ListUser", created_at: "2023-11-15T14:05:45Z" },

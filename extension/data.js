@@ -110,7 +110,7 @@
 
   const userOperations = new Set([
     "HomeTimeline", "HomeLatestTimeline", "UserByScreenName", "UserByRestId",
-    "UserTweets", "UserTweetsAndReplies", "UserMedia", "TweetDetail", "SearchTimeline",
+    "UserTweets", "UserOriginalsTimeline", "UserTweetsAndReplies", "UserMedia", "TweetDetail", "SearchTimeline",
     "Followers", "Following", "BlueVerifiedFollowers", "FollowersYouKnow",
     "ListLatestTweetsTimeline", "CommunityTweetsTimeline", "CommunityMediaTimeline",
     "SidebarUserRecommendations", "ConnectTabTimeline", "Bookmarks", "Likes"
