@@ -17,6 +17,13 @@
     if (count >= 10000) return `${Number((count / 10000).toFixed(1))}万`;
     return count.toLocaleString("en-US");
   }
+  function countTier(count) {
+    if (count >= 1000000) return "million";
+    if (count >= 100000) return "hundred-thousand";
+    if (count >= 10000) return "ten-thousand";
+    if (count >= 1000) return "thousand";
+    return "small";
+  }
   const rootSelector = '[data-testid="User-Name"], [data-testid="UserName"], [data-testid="UserCell"]';
   const badgeSelector = ".xfc-badge";
   const counts = new Map();
@@ -71,6 +78,9 @@
       badge.setAttribute("aria-label", title);
     }
     if (badge.dataset.xfcHandle !== handle) badge.dataset.xfcHandle = handle;
+    // Use the unrounded count, including when an existing card is reused.
+    const tier = countTier(count);
+    if (badge.dataset.xfcTier !== tier) badge.dataset.xfcTier = tier;
     link.parentElement.classList.add("xfc-name-row");
     link.classList.add("xfc-name-link");
     if (link.nextElementSibling !== badge) link.after(badge);

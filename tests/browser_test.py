@@ -138,7 +138,7 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
         page.screenshot(path=str(RESULTS / "desktop-light.png"), full_page=True)
         page.get_by_role("button", name="切换深色").click()
         expect(page.locator("html")).to_have_attribute("data-xfc-theme", "dark")
-        assert page.locator(".xfc-badge").first.evaluate("e => getComputedStyle(e).color") == "rgb(139, 208, 250)"
+        assert page.locator(".xfc-badge").first.evaluate("e => getComputedStyle(e).color") == "rgb(255, 197, 138)"
         page.screenshot(path=str(RESULTS / "desktop-dark.png"), full_page=True)
 
         page.set_viewport_size({"width": 390, "height": 844})
@@ -160,13 +160,64 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
           document.querySelector('section').append(node);
         }""")
         expect(page.locator("#spa .xfc-badge")).to_have_text("粉丝 7,806")
+        # Exercise every raw-count boundary through actual API responses.
+        cases = [(0, "small"), (999, "small"), (1000, "thousand"),
+                 (9999, "thousand"), (10000, "ten-thousand"),
+                 (99999, "ten-thousand"), (100000, "hundred-thousand"),
+                 (999999, "hundred-thousand"), (1000000, "million")]
+        for index, (count, tier) in enumerate(cases):
+            handle = f"tier{index}"
+            PAYLOAD["data"]["entries"].append({"core": {"screen_name": handle}, "relationship_counts": {"followers": count}})
+        page.evaluate("""cases => {
+          const section = document.querySelector('section');
+          cases.forEach(([count], index) => {
+            const node = document.querySelector('#alice').cloneNode(true);
+            node.id = 'tier' + index;
+            node.querySelectorAll('.xfc-badge').forEach(n => n.remove());
+            node.querySelectorAll('a').forEach(a => {
+              a.href = '/tier' + index;
+              a.textContent = a.classList.contains('handle') ? '@tier' + index : count.toLocaleString('en-US');
+            });
+            section.append(node);
+          });
+        }""", cases)
+        page.get_by_role("button", name="载入用户列表").click()
+        for index, (_, tier) in enumerate(cases):
+            expect(page.locator(f"#tier{index} .xfc-badge")).to_have_attribute("data-xfc-tier", tier)
+
+        # Text/background contrast remains readable for every tier in both themes.
+        contrast_script = r"""e => {
+          const style = getComputedStyle(e);
+          const luminance = color => {
+            const c = color.match(/\d+/g).slice(0,3).map(Number).map(v => v/255);
+            const linear = c.map(v => v <= .04045 ? v/12.92 : ((v+.055)/1.055)**2.4);
+            return linear[0]*.2126 + linear[1]*.7152 + linear[2]*.0722;
+          };
+          const foreground = luminance(style.color), background = luminance(style.backgroundColor);
+          return (Math.max(foreground,background)+.05)/(Math.min(foreground,background)+.05);
+        }"""
+        for theme in ("light", "dark"):
+            expect(page.locator("html")).to_have_attribute("data-xfc-theme", theme)
+            for index in range(len(cases)):
+                assert page.locator(f"#tier{index} .xfc-badge").evaluate(contrast_script) >= 4.5
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            page.screenshot(path=str(RESULTS / f"tiers-{theme}.png"), full_page=True)
+            page.get_by_role("button", name="切换深色").click()
+
+        # Update a badge across a tier boundary, including a reused DOM card.
+        PAYLOAD["data"]["entries"][2]["relationship_counts"]["followers"] = 10000
+        page.get_by_role("button", name="载入用户列表").click()
+        expect(page.locator("#alice .xfc-badge")).to_have_attribute("data-xfc-tier", "ten-thousand")
+        expect(page.locator("#spa .xfc-badge")).to_have_attribute("data-xfc-tier", "ten-thousand")
+        page.locator("#tier8").evaluate("node => node.querySelectorAll('a').forEach(a => {a.href='/Zero'; a.textContent='Zero';})")
+        expect(page.locator("#tier8 .xfc-badge")).to_have_attribute("data-xfc-tier", "small")
         assert not errors, errors
         assert not failures, failures
-        assert len(requests) == 6, f"Unexpected additional requests: {requests}"
+        assert len(requests) == 8, f"Unexpected additional requests: {requests}"
         summary = {
             "result": "passed", "browser": context.browser.version,
             "mode": "actual unpacked MV3 extension, synthetic X page and API responses",
-            "checks": ["fetch", "XHR", "original response body", "old/new user shapes", "zero", "missing count", "nested quote", "nested UserCell", "dynamic append", "virtualized user reuse", "count update", "non-API response", "invalid JSON", "message validation", "keyboard", "desktop light/dark", "390px mobile long name", "SPA navigation", "no additional API request"],
+            "checks": ["fetch", "XHR", "original response body", "old/new user shapes", "zero", "missing count", "nested quote", "nested UserCell", "dynamic append", "virtualized user reuse", "count update", "non-API response", "invalid JSON", "message validation", "keyboard", "desktop light/dark", "390px mobile long name", "SPA navigation", "no additional API request", "all color tier boundaries", "color update and reused card", "light/dark contrast >= 4.5"],
             "page_errors": errors, "failed_requests": failures, "requests": requests,
             "not_verified": ["live logged-in X DOM/API compatibility"],
         }

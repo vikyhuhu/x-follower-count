@@ -17,8 +17,8 @@
   margin-inline-start: 6px;
   padding: 2px 6px;
   border-radius: 5px;
-  background: #e8f4fd;
-  color: #08679d;
+  background: #eef0f2;
+  color: #53616d;
   font-family: inherit;
   font-size: 12px;
   font-weight: 700;
@@ -28,6 +28,40 @@
 }
 
 :root[data-xfc-theme="dark"] .xfc-badge {
+  background: #303a43;
+  color: #c4cdd5;
+}
+
+.xfc-badge[data-xfc-tier="thousand"] {
+  background: #e8f4fd;
+  color: #08679d;
+}
+.xfc-badge[data-xfc-tier="ten-thousand"] {
+  background: #f0eaff;
+  color: #6741c7;
+}
+.xfc-badge[data-xfc-tier="hundred-thousand"] {
+  background: #fff0de;
+  color: #97470b;
+}
+.xfc-badge[data-xfc-tier="million"] {
+  background: #ffe9ee;
+  color: #b4233e;
+}
+
+:root[data-xfc-theme="dark"] .xfc-badge[data-xfc-tier="thousand"] {
   background: #153349;
   color: #8bd0fa;
+}
+:root[data-xfc-theme="dark"] .xfc-badge[data-xfc-tier="ten-thousand"] {
+  background: #33254e;
+  color: #d1baff;
+}
+:root[data-xfc-theme="dark"] .xfc-badge[data-xfc-tier="hundred-thousand"] {
+  background: #482e18;
+  color: #ffc58a;
+}
+:root[data-xfc-theme="dark"] .xfc-badge[data-xfc-tier="million"] {
+  background: #492631;
+  color: #ffb3c3;
 }

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X 粉丝数",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "将 X 页面已有响应里的粉丝数量显示在用户名字旁。数据只保存在当前页面。",
   "minimum_chrome_version": "111",
   "icons": {
