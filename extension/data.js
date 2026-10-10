@@ -110,10 +110,11 @@
 
   const userOperations = new Set([
     "HomeTimeline", "HomeLatestTimeline", "UserByScreenName", "UserByRestId",
-    "UserTweets", "UserOriginalsTimeline", "UserTweetsAndReplies", "UserMedia", "TweetDetail", "SearchTimeline",
+    "UserTweets", "UserOriginalsTimeline", "UserTweetsAndReplies", "UserRepliesTimeline",
+    "UserRepostsTimeline", "UserArticlesTweets", "UserMedia", "TweetDetail", "SearchTimeline",
     "Followers", "Following", "BlueVerifiedFollowers", "FollowersYouKnow",
     "ListLatestTweetsTimeline", "CommunityTweetsTimeline", "CommunityMediaTimeline",
-    "SidebarUserRecommendations", "ConnectTabTimeline", "Bookmarks", "Likes"
+    "SidebarUserRecommendations", "ConnectTabTimeline", "ExplorePage", "Bookmarks", "Likes"
   ]);
   function isApiUrl(value, base, method = "GET") {
     try {

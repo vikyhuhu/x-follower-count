@@ -17,7 +17,17 @@ payload = {"data": {"entries": [{"user_results": {"result": {
     "relationship_perspectives": {"following": True, "followed_by": True}
 }}}]}}
 errors, failures, requests = [], [], []
-operations = ["ConnectTabTimeline", "UserOriginalsTimeline", "Bookmarks", "Likes", "Following"]
+recommendation_scenario = False
+def account(handle, count):
+    return {"rest_id": str(count), "core": {"screen_name": handle, "created_at": "2020-01-01T00:00:00Z"},
+            "relationship_counts": {"followers": count}}
+recommendation_payloads = {
+    "SidebarUserRecommendations": {"data": {"users": [account("SharedUser", 432)]}},
+    "ExplorePage": {"data": {"users": [account("MainOne", 1574), account("SharedUser", 432), account("MainTwo", 116000)]}},
+    "UserRepliesTimeline": {"data": {"users": [account("NewUser", 999)]}},
+}
+operations = ["ExplorePage", "ConnectTabTimeline", "UserOriginalsTimeline", "UserRepliesTimeline",
+              "UserRepostsTimeline", "UserArticlesTweets", "Bookmarks", "Likes", "Following"]
 
 with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-surfaces-") as profile:
     options = {
@@ -42,7 +52,9 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-surfaces-")
             route.fulfill(content_type="text/html", body=(ROOT / "tests/surfaces_fixture.html").read_text())
         elif "/i/api/graphql/fixture/" in route.request.url:
             requests.append(route.request.url)
-            route.fulfill(content_type="application/json", body=json.dumps(payload))
+            operation = route.request.url.rsplit("/", 1)[-1]
+            response = recommendation_payloads[operation] if recommendation_scenario else payload
+            route.fulfill(content_type="application/json", body=json.dumps(response))
         else:
             route.fulfill(status=404, body="Unexpected request")
 
@@ -97,11 +109,54 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-surfaces-")
         page.set_viewport_size({"width": 320, "height": 960})
         assert_list_geometry()
         page.screenshot(path=str(RESULTS / "surfaces-mobile.png"), full_page=True)
+
+        # Reproduce the real gap: sidebar overlap makes only one main recommendation appear supported.
+        recommendation_scenario = True
+        page.set_viewport_size({"width": 1280, "height": 960})
+        page.goto("https://x.com/__xfc_surfaces?operation=SidebarUserRecommendations")
+        page.evaluate("""() => {
+            document.querySelector('#author').closest('article').remove();
+            const third = document.querySelector('#full').cloneNode(true);
+            third.id = 'third'; document.querySelector('#nested').after(third);
+            for (const [id, handle] of [['compact','SharedUser'], ['full','MainOne'], ['nested','SharedUser'], ['third','MainTwo']]) {
+                const cell = document.getElementById(id);
+                cell.querySelector('.native-name a').textContent = handle;
+                cell.querySelector('.native-handle a').textContent = '@' + handle;
+                for (const link of cell.querySelectorAll('.native-name a,.native-handle a')) link.href = '/' + handle;
+            }
+        }""")
+        expect(page.locator(".xfc-labels")).to_have_count(0)
+        page.get_by_role("button", name="载入当前页面").click()
+        expect(page.locator(".xfc-labels")).to_have_count(2)
+        expect(page.locator("#full .xfc-labels")).to_have_count(0)
+        expect(page.locator("#third .xfc-labels")).to_have_count(0)
+        page.evaluate("() => fetch('/i/api/graphql/fixture/ExplorePage').then(r => r.json())")
+        expect(page.locator(".xfc-labels")).to_have_count(4)
+        for selector, text in [("#full", "粉丝 1,574"), ("#nested", "粉丝 432"), ("#third", "粉丝 11.6万")]:
+            expect(page.locator(selector + " .xfc-badge")).to_have_text(text)
+            expect(page.locator(selector + " [data-xfc-kind='age']")).to_be_visible()
+
+        # SPA navigation can recycle a card, then load another response or append a card later.
+        page.evaluate("""() => {
+            const cell = document.querySelector('#full');
+            cell.querySelector('.native-name a').textContent = 'NewUser';
+            cell.querySelector('.native-handle a').textContent = '@NewUser';
+            for (const link of cell.querySelectorAll('.native-name a,.native-handle a')) link.href = '/NewUser';
+        }""")
+        expect(page.locator("#full .xfc-labels")).to_have_count(0)
+        page.evaluate("() => fetch('/i/api/graphql/fixture/UserRepliesTimeline').then(r => r.json())")
+        expect(page.locator("#full .xfc-badge")).to_have_text("粉丝 999")
+        page.evaluate("""() => {
+            const card = document.querySelector('#third').cloneNode(true);
+            card.id = 'late'; card.querySelector('.xfc-labels').remove();
+            document.querySelector('#third').after(card);
+        }""")
+        expect(page.locator("#late .xfc-badge")).to_have_text("粉丝 11.6万")
         assert not errors, errors
         assert not failures, failures
-        assert len(requests) == len(operations), requests
+        assert len(requests) == len(operations) + 3, requests
         print(json.dumps({"result": "passed", "operations": operations,
-                          "checks": ["cold cache", "stacked readable identity", "wrapped list metadata", "nested header", "320/390/1280px", "keyboard card", "light/dark", "no extra requests"],
+                          "checks": ["cold cache", "independent main/sidebar recommendations", "SPA recycled and late cards", "stacked readable identity", "wrapped list metadata", "nested header", "320/390/1280px", "keyboard card", "light/dark", "no extra requests"],
                           "page_errors": errors, "failed_requests": failures}, ensure_ascii=False))
     finally:
         context.close()

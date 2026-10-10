@@ -39,7 +39,9 @@ X 的字段或页面结构可能变化，缺失字段不猜测。正文 @提及�
 
 1.2.1 修复首页标签及趋势不显示：X 的 HomeTimeline 是 POST 读取查询，现按允许的读取接口名称识别 GET／POST，仍忽略私信、认证和写操作。不读取请求正文、不增加请求。
 
-1.2.4 补充支持个人主页的 UserOriginalsTimeline 读取响应。主页帖子之间的推荐账号也来自此响应；遗漏该接口时，仅同时出现在其他已支持响应中的账号能获得标签。冷加载回归覆盖 GET／POST，并在真实个人主页推荐模块确认当前三张卡片都有标签。
+1.2.4 补充支持个人主页的 UserOriginalsTimeline、Explore 的 ExplorePage，以及主页回复、转发、文章使用的 UserRepliesTimeline、UserRepostsTimeline、UserArticlesTweets 读取响应。推荐主列表与侧栏使用不同接口；遗漏主列表接口时，仅同时被侧栏加载的账号能获得标签。推荐卡片统一按账号识别，不依赖页面路径或「Who to follow」标题文本。冷加载回归覆盖 GET／POST、不同账号的主列表与侧栏、页面切换复用卡片及滚动后新增卡片。
+
+已排查首页、Explore 各分类、个人主页、Follow／Creators for you、搜索、通知、帖子详情、用户关系列表、Lists 和 Communities 的账号推荐入口。具体入口、读取接口及真实页面验证范围见 [推荐页面覆盖表](docs/recommendation-surfaces.md)。
 
 若没有显示，请检查插件已启用、站点访问允许 X，并刷新页面。重新加载扩展会使旧页面脚本失效；1.2.1已增加安全退出，更新后仍需刷新 X 才能运行新脚本。Chrome错误页的历史记录不会自动清空，可手动清除后观察是否再发生。
 
