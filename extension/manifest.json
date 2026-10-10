@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X 粉丝数",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "在 X 名字旁显示粉丝数、关系与账号年龄；统一详情卡展示账号数据和近七天趋势。记录仅保存在本机。",
   "minimum_chrome_version": "111",
   "icons": {
