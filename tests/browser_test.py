@@ -6,6 +6,7 @@ Requires Python Playwright and a Chromium binary; see README.
 import json
 import os
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright, expect
@@ -21,6 +22,19 @@ PAYLOAD = {"data": {"entries": [
     {"legacy": {"screen_name": "Unknown", "friends_count": 100}},
     {"screen_name": "Metrics", "public_metrics": {"followers_count": 22}},
 ]}}
+
+# Dates are relative to the actual test run; exact 90-day boundary is covered in Node.
+now = datetime.now(timezone.utc)
+def created(days):
+    return (now - timedelta(days=days)).strftime("%a %b %d %H:%M:%S +0000 %Y")
+PAYLOAD["data"]["entries"][0]["user_results"]["result"].update({"relationship_perspectives": {"following": True, "followed_by": True}})
+PAYLOAD["data"]["entries"][0]["user_results"]["result"]["core"]["created_at"] = created(89)
+PAYLOAD["data"]["entries"][1]["legacy"].update({"following": False, "followed_by": True, "created_at": created(91)})
+PAYLOAD["data"]["entries"][2]["relationship_perspectives"] = {"following": True, "followed_by": False}
+PAYLOAD["data"]["entries"][2]["core"]["created_at"] = created(2)
+PAYLOAD["data"]["entries"][3]["relationship_perspectives"] = {"following": False, "followed_by": False}
+PAYLOAD["data"]["entries"][3]["core"]["created_at"] = created(-1)
+PAYLOAD["data"]["entries"][4]["legacy"].update({"followed_by": True, "created_at": "invalid"})
 
 
 def browser_binary():
@@ -80,6 +94,14 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
         expect(page.locator("#unknown .xfc-badge")).to_have_count(0)
         expect(page.locator("#nested .xfc-badge")).to_have_count(1)
         expect(page.locator("#response-state")).to_have_text("页面仍能完整读取原始响应")
+        expect(page.locator("#tweet > [data-testid='User-Name'] .xfc-metadata")).to_have_text("互相关注新号")
+        expect(page.locator("#quote .xfc-metadata")).to_have_text("关注了你")
+        expect(page.locator("#alice .xfc-metadata")).to_have_text("你已关注新号")
+        expect(page.locator("#zero .xfc-metadata")).to_have_count(0)
+        # A known relation is displayed even if the count and opposite direction are missing.
+        expect(page.locator("#unknown .xfc-metadata")).to_have_text("关注了你")
+        expect(page.locator("#nested .xfc-metadata")).to_have_count(0)
+        assert "UTC" in page.locator("#alice [data-xfc-kind='new']").get_attribute("title")
         assert "174,000" in page.locator("#tweet > [data-testid='User-Name'] .xfc-badge").get_attribute("title")
         alignment = page.locator("#tweet > [data-testid='User-Name'] .xfc-name-row").evaluate("""row => {
           const link = row.querySelector('a').getBoundingClientRect();
@@ -107,10 +129,12 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
           a.href = '/Zero'; a.textContent = a.classList.contains('handle') ? '@Zero' : 'Zero';
         })""")
         expect(page.locator("#dynamic .xfc-badge")).to_have_text("粉丝 0")
+        expect(page.locator("#dynamic .xfc-metadata")).to_have_count(0)
         page.evaluate("""() => document.querySelectorAll('#dynamic a').forEach(a => {
           a.href = '/Unknown'; a.textContent = a.classList.contains('handle') ? '@Unknown' : 'Unknown';
         })""")
         expect(page.locator("#dynamic .xfc-badge")).to_have_count(0)
+        expect(page.locator("#dynamic .xfc-metadata")).to_have_text("关注了你")
         page.locator("#dynamic").evaluate("node => node.remove()")
 
         # The page can update a known user's count in a later response.
@@ -200,6 +224,10 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
             expect(page.locator("html")).to_have_attribute("data-xfc-theme", theme)
             for index in range(len(cases)):
                 assert page.locator(f"#tier{index} .xfc-badge").evaluate(contrast_script) >= 4.5
+            for label in page.locator(".xfc-meta-badge").all():
+                assert label.evaluate(contrast_script) >= 4.5
+                box = label.bounding_box()
+                assert box["x"] >= 0 and box["x"] + box["width"] <= 390
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.screenshot(path=str(RESULTS / f"tiers-{theme}.png"), full_page=True)
             page.get_by_role("button", name="切换深色").click()
@@ -211,13 +239,26 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
         expect(page.locator("#spa .xfc-badge")).to_have_attribute("data-xfc-tier", "ten-thousand")
         page.locator("#tier8").evaluate("node => node.querySelectorAll('a').forEach(a => {a.href='/Zero'; a.textContent='Zero';})")
         expect(page.locator("#tier8 .xfc-badge")).to_have_attribute("data-xfc-tier", "small")
+        # Successful responses can change relationships without changing follower count.
+        for following, followed_by, text in [(True, True, "互相关注新号"), (False, True, "关注了你新号"), (False, False, "新号")]:
+            PAYLOAD["data"]["entries"][2] = {"core": {"screen_name": "Alice"}, "relationship_perspectives": {"following": following, "followed_by": followed_by}}
+            page.get_by_role("button", name="载入用户列表").click()
+            expect(page.locator("#alice .xfc-metadata")).to_have_text(text)
+            expect(page.locator("#spa .xfc-metadata")).to_have_text(text)
+            expect(page.locator("#alice .xfc-badge")).to_have_text("粉丝 1万")
+        # Switching the viewer invalidates page-scoped relation caches.
+        page.get_by_test_id("SideNav_AccountSwitcher_Button").evaluate("e => e.textContent = '测试帐号 @AnotherViewer'")
+        expect(page.locator(".xfc-badge")).to_have_count(0)
+        expect(page.locator(".xfc-metadata")).to_have_count(0)
+        page.get_by_role("button", name="载入用户列表").click()
+        expect(page.locator("#tweet > [data-testid='User-Name'] .xfc-metadata")).to_have_text("互相关注新号")
         assert not errors, errors
         assert not failures, failures
-        assert len(requests) == 8, f"Unexpected additional requests: {requests}"
+        assert len(requests) == 12, f"Unexpected additional requests: {requests}"
         summary = {
             "result": "passed", "browser": context.browser.version,
             "mode": "actual unpacked MV3 extension, synthetic X page and API responses",
-            "checks": ["fetch", "XHR", "original response body", "old/new user shapes", "zero", "missing count", "nested quote", "nested UserCell", "dynamic append", "virtualized user reuse", "count update", "non-API response", "invalid JSON", "message validation", "keyboard", "desktop light/dark", "390px mobile long name", "SPA navigation", "no additional API request", "all color tier boundaries", "color update and reused card", "light/dark contrast >= 4.5"],
+            "checks": ["fetch", "XHR", "original response body", "old/new user shapes", "zero", "missing count", "nested quote", "nested UserCell", "dynamic append", "virtualized user reuse", "count update", "non-API response", "invalid JSON", "message validation", "keyboard", "desktop light/dark", "390px mobile long name", "SPA navigation", "no additional API request", "all color tier boundaries", "color update and reused card", "light/dark contrast >= 4.5", "all relation states including unknown", "relation without follower count", "new account valid/old/future/missing dates", "relation-only updates and partial response merging", "metadata mobile wrapping", "viewer switch cache reset"],
             "page_errors": errors, "failed_requests": failures, "requests": requests,
             "not_verified": ["live logged-in X DOM/API compatibility"],
         }

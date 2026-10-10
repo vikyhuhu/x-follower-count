@@ -65,3 +65,58 @@
   background: #492631;
   color: #ffb3c3;
 }
+
+.xfc-user-header {
+  flex-wrap: wrap !important;
+}
+
+.xfc-metadata {
+  display: flex;
+  flex: 0 0 100%;
+  min-width: 0;
+  max-width: 100%;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+
+.xfc-meta-badge {
+  display: inline-flex;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  color: #53616d;
+  background: #eef0f2;
+}
+.xfc-meta-badge[data-xfc-kind="mutual"] {
+  color: #17603d;
+  background: #e7f5ed;
+}
+.xfc-meta-badge[data-xfc-kind="follows-you"] {
+  color: #08679d;
+  background: #e8f4fd;
+}
+.xfc-meta-badge[data-xfc-kind="new"] {
+  color: #97470b;
+  background: #fff0de;
+}
+:root[data-xfc-theme="dark"] .xfc-meta-badge {
+  color: #c4cdd5;
+  background: #303a43;
+}
+:root[data-xfc-theme="dark"] .xfc-meta-badge[data-xfc-kind="mutual"] {
+  color: #a0e5be;
+  background: #193d2b;
+}
+:root[data-xfc-theme="dark"] .xfc-meta-badge[data-xfc-kind="follows-you"] {
+  color: #8bd0fa;
+  background: #153349;
+}
+:root[data-xfc-theme="dark"] .xfc-meta-badge[data-xfc-kind="new"] {
+  color: #ffc58a;
+  background: #482e18;
+}

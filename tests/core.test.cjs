@@ -52,7 +52,7 @@ test("only X API responses are inspected", () => {
   for (const url of ["https://evilx.com/i/api/test", "https://x.com.evil.test/i/api/test", "/settings", "http://x.com/i/api/test", "https://example.com/i/api/graphql/abc"]) assert.equal(data.isApiUrl(url, "https://x.com/home"), false);
 });
 
-function bridgeHarness(fetch) {
+function bridgeHarness(fetch, extra = {}) {
   const posts = [];
   const listeners = new Map();
   class XHR {
@@ -73,7 +73,7 @@ function bridgeHarness(fetch) {
     addEventListener: (type, listener) => listeners.set(type, listener),
     postMessage: message => posts.push(message)
   };
-  const context = vm.createContext({ window, location: { origin: "https://x.com", href: "https://x.com/home" }, XMLHttpRequest: XHR, URL, __xfcData: data });
+  const context = vm.createContext({ window, location: { origin: "https://x.com", href: "https://x.com/home" }, XMLHttpRequest: XHR, URL, __xfcData: data, ...extra });
   vm.runInContext(fs.readFileSync(path.join(extension, "network.js"), "utf8"), context);
   return { window, XHR, posts, listeners };
 }
@@ -156,4 +156,72 @@ test("manifest restricts injection to X and contains only existing local files",
     for (const name of [...script.js, ...(script.css ?? [])]) assert.equal(fs.existsSync(path.join(extension, name)), true);
     assert.deepEqual(script.matches, ["https://x.com/*", "https://www.x.com/*", "https://twitter.com/*", "https://www.twitter.com/*"]);
   }
+});
+
+
+test("extract current and legacy relations/date independently of follower count", () => {
+  const iso = "2026-10-08T03:12:33Z";
+  const users = Object.fromEntries(data.extractUsers([
+    { core: { screen_name: "Modern", created_at: "Thu Oct 08 03:12:33 +0000 2026" }, relationship_perspectives: { following: true, followed_by: false } },
+    { legacy: { screen_name: "Legacy", following: false, followed_by: true, created_at: iso, followers_count: 0 } },
+    { core: { screen_name: "Partial" }, relationship_perspectives: { followed_by: true } },
+    { core: { screen_name: "Invalid", created_at: "2026-02-30T03:12:33Z" }, relationship_perspectives: { following: "false", followed_by: 1 } },
+    { core: { screen_name: "NoDate", created_at: "1" } },
+    { screen_name: "Separate", sibling: { following: true, created_at: iso } }
+  ]).map(user => [user.screenName, user]));
+  assert.deepEqual(users, {
+    partial: { screenName: "partial", followedBy: true },
+    legacy: { screenName: "legacy", followersCount: 0, following: false, followedBy: true, createdAt: Date.parse(iso) },
+    modern: { screenName: "modern", following: true, followedBy: false, createdAt: Date.parse(iso) }
+  });
+});
+
+test("new account requires a valid past date strictly younger than 90 days", () => {
+  const now = Date.parse("2026-10-10T00:00:00Z");
+  const window = 90 * 86400000;
+  for (const value of [now, now - window + 1]) assert.equal(data.isNewAccount(value, now), true);
+  for (const value of [now - window, now - window - 1, now + 1, undefined, null, NaN, "2026-10-09", -1]) assert.equal(data.isNewAccount(value, now), false);
+});
+
+test("bridge updates relation-only changes and retains known fields in partial responses", () => {
+  const harness = bridgeHarness(() => Promise.resolve());
+  const xhr = new harness.XHR();
+  const deliver = payload => {
+    xhr.open("GET", "/i/api/graphql/test/UserByScreenName");
+    xhr.send(); xhr.finish(payload, "json");
+  };
+  deliver({ core: { screen_name: "Alice", created_at: "2026-10-08T03:12:33Z" }, relationship_counts: { followers: 25 }, relationship_perspectives: { following: true, followed_by: true } });
+  deliver({ core: { screen_name: "Alice" }, relationship_perspectives: { following: false } });
+  deliver({ core: { screen_name: "Alice" }, relationship_counts: { followers: 25 } });
+  const updates = harness.posts.filter(message => message.type === "users");
+  assert.equal(updates.length, 2);
+  assert.deepEqual({ ...updates.at(-1).users[0] }, { screenName: "alice", followersCount: 25, following: false, followedBy: true, createdAt: Date.parse("2026-10-08T03:12:33Z") });
+});
+
+
+test("viewer changes reset caches and discard responses started for the previous viewer", async () => {
+  let callback;
+  const button = { textContent: "Viewer @First" };
+  const extra = {
+    document: { body: {}, querySelector: () => button },
+    MutationObserver: class { constructor(fn) { callback = fn; } observe() {} }
+  };
+  let complete;
+  const pending = new Promise(resolve => { complete = resolve; });
+  const harness = bridgeHarness(() => pending, extra);
+  const xhr = new harness.XHR();
+  xhr.open("GET", "/i/api/graphql/test/UserByScreenName"); xhr.send();
+  xhr.finish({ core: { screen_name: "Alice" }, relationship_perspectives: { following: true } }, "json");
+  harness.window.fetch("/i/api/graphql/test/HomeTimeline");
+  button.textContent = "Viewer @Second";
+  callback();
+  assert.equal(harness.posts.at(-1).type, "reset");
+  complete(new Response(JSON.stringify({ core: { screen_name: "Late" }, relationship_perspectives: { followed_by: true } })));
+  await settle(); await settle();
+  assert.equal(harness.posts.filter(message => message.type === "users").length, 1);
+  harness.listeners.get("message")({ source: harness.window, origin: "https://x.com", data: { channel: data.channel, type: "ready" } });
+  assert.equal(harness.posts.filter(message => message.type === "users").length, 1);
+  xhr.open("GET", "/i/api/graphql/test/UserByScreenName"); xhr.send();
+  xhr.finish({ core: { screen_name: "Alice" }, relationship_perspectives: { following: false } }, "json");
+  assert.equal(harness.posts.at(-1).users[0].following, false);
 });

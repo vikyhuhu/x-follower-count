@@ -7,11 +7,21 @@
   const maxBatch = 500;
   function normalizeUser(value) {
     if (!value || typeof value !== "object") return null;
-    const { screenName, followersCount } = value;
+    const { screenName, followersCount, following, followedBy, createdAt } = value;
     if (typeof screenName !== "string" || !/^[a-z0-9_]{1,15}$/i.test(screenName)) return null;
-    if (!Number.isSafeInteger(followersCount) || followersCount < 0) return null;
-    return { screenName: screenName.toLowerCase(), followersCount };
+    const user = { screenName: screenName.toLowerCase() };
+    if (Number.isSafeInteger(followersCount) && followersCount >= 0) user.followersCount = followersCount;
+    if (typeof following === "boolean") user.following = following;
+    if (typeof followedBy === "boolean") user.followedBy = followedBy;
+    if (Number.isSafeInteger(createdAt) && createdAt >= 0 && createdAt <= 8640000000000000) user.createdAt = createdAt;
+    return Object.keys(user).length > 1 ? user : null;
   }
+
+  function isNewAccount(createdAt, now = Date.now()) {
+    const age = now - createdAt;
+    return Number.isSafeInteger(createdAt) && createdAt >= 0 && age >= 0 && age < 90 * 24 * 60 * 60 * 1000;
+  }
+
   function formatCount(count) {
     if (count >= 100000000) return `${Number((count / 100000000).toFixed(1))}亿`;
     if (count >= 10000) return `${Number((count / 10000).toFixed(1))}万`;
@@ -26,7 +36,7 @@
   }
   const rootSelector = '[data-testid="User-Name"], [data-testid="UserName"], [data-testid="UserCell"]';
   const badgeSelector = ".xfc-badge";
-  const counts = new Map();
+  const users = new Map();
   const dirty = new Set();
   const reserved = new Set(["home", "explore", "search", "notifications", "messages", "settings", "compose", "i", "intent", "share", "login", "logout", "signup", "tos", "privacy"]);
   let scheduled = false;
@@ -58,10 +68,18 @@
     if (!root.isConnected) return;
     const link = nameLink(root);
     const handle = link && profileHandle(link);
-    const count = handle ? counts.get(handle) : undefined;
+    const user = handle ? users.get(handle) : undefined;
+    const count = user?.followersCount;
     const badges = [...root.querySelectorAll(badgeSelector)].filter(badge => badge.closest(rootSelector) === root);
     let badge = badges.shift();
     for (const duplicate of badges) duplicate.remove();
+    if (link) renderMetadata(root, link, user);
+    else {
+      root.querySelectorAll(".xfc-metadata").forEach(node => {
+        if (node.closest(rootSelector) === root) node.remove();
+      });
+      root.classList.remove("xfc-user-header");
+    }
     if (count === undefined || !link) {
       badge?.remove();
       return;
@@ -84,6 +102,63 @@
     link.parentElement.classList.add("xfc-name-row");
     link.classList.add("xfc-name-link");
     if (link.nextElementSibling !== badge) link.after(badge);
+  }
+
+  function renderMetadata(root, link, user) {
+    const rows = [...root.querySelectorAll(".xfc-metadata")].filter(node => node.closest(rootSelector) === root);
+    let row = rows.shift();
+    rows.forEach(node => node.remove());
+    const labels = [];
+    if (user?.following === true && user.followedBy === true) {
+      labels.push({ kind: "mutual", text: "互相关注", title: "你关注了对方，对方也关注了你" });
+    } else if (user?.followedBy === true) {
+      labels.push({ kind: "follows-you", text: "关注了你", title: "对方关注了你" });
+    } else if (user?.following === true) {
+      labels.push({ kind: "following", text: "你已关注", title: "你关注了对方" });
+    }
+    if (isNewAccount(user?.createdAt)) {
+      const date = new Date(user.createdAt).toLocaleDateString("zh-CN", { timeZone: "UTC" });
+      labels.push({ kind: "new", text: "新号", title: `注册于 ${date}（UTC），注册未满 90 天` });
+    }
+    if (!labels.length) {
+      row?.remove();
+      root.classList.remove("xfc-user-header");
+      return;
+    }
+    if (!row) {
+      row = document.createElement("div");
+      row.className = "xfc-metadata";
+    }
+    for (let index = 0; index < labels.length; index++) {
+      const label = labels[index];
+      let badge = row.children[index];
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "xfc-meta-badge";
+        row.append(badge);
+      }
+      if (badge.dataset.xfcKind !== label.kind) badge.dataset.xfcKind = label.kind;
+      if (badge.textContent !== label.text) badge.textContent = label.text;
+      const title = `${label.title}（来自页面已加载的数据）`;
+      if (badge.title !== title) {
+        badge.title = title;
+        badge.setAttribute("aria-label", title);
+      }
+    }
+    while (row.children.length > labels.length) row.lastElementChild.remove();
+    // Dedicated headers can wrap a secondary row. UserCell's outer container
+    // also holds the avatar, biography and follow button, so use its name column.
+    if (!root.matches('[data-testid="UserCell"]')) {
+      root.classList.add("xfc-user-header");
+      if (root.lastElementChild !== row) root.append(row);
+    } else {
+      let container = link.parentElement.parentElement;
+      if (!root.contains(container)) container = root;
+      const handleLink = [...container.querySelectorAll("a[href]")].find(a => a !== link && profileHandle(a) === profileHandle(link) && a.textContent.trim().startsWith("@"));
+      let anchor = handleLink || link;
+      while (anchor.parentElement !== container) anchor = anchor.parentElement;
+      if (anchor.nextElementSibling !== row) anchor.after(row);
+    }
   }
 
   function updateTheme() {
@@ -115,6 +190,11 @@
 
   window.addEventListener("message", event => {
     if (event.source !== window || event.origin !== location.origin || event.data?.channel !== channel) return;
+    if (event.data.type === "reset") {
+      users.clear();
+      schedule(true);
+      return;
+    }
     if (event.data.type === "bridge-ready") {
       window.postMessage({ channel, type: "ready" }, location.origin);
       return;
@@ -124,11 +204,13 @@
     for (const value of event.data.users) {
       const user = normalizeUser(value);
       if (!user) continue;
-      if (counts.get(user.screenName) !== user.followersCount) changed = true;
-      counts.delete(user.screenName);
-      counts.set(user.screenName, user.followersCount);
+      const previous = users.get(user.screenName);
+      const merged = { ...previous, ...user };
+      if (!previous || ["followersCount", "following", "followedBy", "createdAt"].some(key => previous[key] !== merged[key])) changed = true;
+      users.delete(user.screenName);
+      users.set(user.screenName, merged);
     }
-    while (counts.size > maxUsers) counts.delete(counts.keys().next().value);
+    while (users.size > maxUsers) users.delete(users.keys().next().value);
     if (changed) schedule(true);
   });
   window.postMessage({ channel, type: "ready" }, location.origin);
@@ -153,6 +235,10 @@
       themeObserver.observe(node, { attributes: true, attributeFilter: ["class", "style"] });
     }
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => schedule());
+    // Recheck the 90-day boundary while a page stays open; no network work.
+    setInterval(() => {
+      if (document.querySelector('.xfc-meta-badge[data-xfc-kind="new"]')) schedule(true);
+    }, 60000);
     schedule(true);
   }
   if (document.body) start();
