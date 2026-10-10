@@ -1,0 +1,5 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="popup.css"><title>X 粉丝数</title></head>
+<body><h1>X 粉丝数</h1><p>查看 X 账号详情；不上传数据。</p>
+<fieldset disabled><legend>本机设置</legend><label><input type="checkbox" name="recording">开启本机粉丝趋势记录</label><p class="note">开启后保存已加载账号的用户 ID、观察时间及粉丝数，保留30天。默认关闭；关闭后停止记录及趋势展示，已有记录可手动清除。</p><p>详情卡可选内容</p><label><input type="checkbox" name="verification">认证状态</label><label><input type="checkbox" name="media">媒体帖数</label><label><input type="checkbox" name="category">账号自填类别</label><label><input type="checkbox" name="website">个人网站</label></fieldset>
+<p id="summary">正在读取本地记录…</p><button id="clear" type="button">清除全部趋势记录</button><p id="confirm" hidden>清除本机保存的全部趋势记录？<button id="confirm-clear" type="button">确认清除</button><button id="cancel" type="button">取消</button></p><p id="status" role="status"></p><p class="note">保留最近30天；最多1,000个账号，存储预算8 MiB；超限淘汰较早记录。不主动请求账号数据，不保存帖子正文或关注关系。<a href="privacy.html" target="_blank" rel="noopener">隐私政策</a></p><script src="popup.js"></script></body></html>

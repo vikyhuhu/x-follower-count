@@ -2,24 +2,50 @@
   "use strict";
   // Execution worlds are independent. Keep this UI receiver self-contained;
   // Chrome can deduplicate a file declared in multiple content-script entries.
+  const runtime = globalThis.__xfcRuntime;
   const channel = "x-follower-count:v1";
   const maxUsers = 10000;
   const maxBatch = 500;
   function normalizeUser(value) {
     if (!value || typeof value !== "object") return null;
-    const { screenName, followersCount, following, followedBy, createdAt } = value;
+    const { screenName } = value;
     if (typeof screenName !== "string" || !/^[a-z0-9_]{1,15}$/i.test(screenName)) return null;
     const user = { screenName: screenName.toLowerCase() };
-    if (Number.isSafeInteger(followersCount) && followersCount >= 0) user.followersCount = followersCount;
-    if (typeof following === "boolean") user.following = following;
-    if (typeof followedBy === "boolean") user.followedBy = followedBy;
-    if (Number.isSafeInteger(createdAt) && createdAt >= 0 && createdAt <= 8640000000000000) user.createdAt = createdAt;
+    if (typeof value.userId === "string" && /^\d{1,40}$/.test(value.userId)) user.userId = value.userId;
+    for (const key of ["followersCount", "followingCount", "tweetCount", "mediaCount"])
+      if (Number.isSafeInteger(value[key]) && value[key] >= 0) user[key] = value[key];
+    for (const key of ["following", "followedBy"])
+      if (typeof value[key] === "boolean") user[key] = value[key];
+    if (Number.isSafeInteger(value.createdAt) && value.createdAt >= 0 && value.createdAt <= 8640000000000000) user.createdAt = value.createdAt;
+    for (const key of ["name", "category"])
+      if (typeof value[key] === "string" && value[key].length <= 120) user[key] = value[key];
+    if (["blue", "business", "government", "verified", "none"].includes(value.verification)) user.verification = value.verification;
+    if (typeof value.website === "string" && value.website.length <= 2048) {
+      try { const url = new URL(value.website); if (["https:", "http:"].includes(url.protocol)) user.website = url.href; } catch {}
+    }
     return Object.keys(user).length > 1 ? user : null;
   }
+
 
   function isNewAccount(createdAt, now = Date.now()) {
     const age = now - createdAt;
     return Number.isSafeInteger(createdAt) && createdAt >= 0 && age >= 0 && age < 90 * 24 * 60 * 60 * 1000;
+  }
+
+  function formatAccountAge(createdAt, now = Date.now()) {
+    if (!Number.isSafeInteger(createdAt) || createdAt < 0 || !Number.isFinite(now) || createdAt > now) return null;
+    if (isNewAccount(createdAt, now)) return "新号";
+    const start = new Date(createdAt);
+    const end = new Date(now);
+    let months = (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + end.getUTCMonth() - start.getUTCMonth();
+    // Count completed calendar months, clamping an anniversary to month end.
+    const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+    const anniversary = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), Math.min(start.getUTCDate(), lastDay), start.getUTCHours(), start.getUTCMinutes(), start.getUTCSeconds(), start.getUTCMilliseconds());
+    if (anniversary > now) months--;
+    const years = Math.floor(months / 12);
+    const remainder = months % 12;
+    if (years) return `${years}年${remainder ? `${remainder}个月` : ""}`;
+    return `${months}个月`;
   }
 
   function formatCount(count) {
@@ -37,6 +63,8 @@
   const rootSelector = '[data-testid="User-Name"], [data-testid="UserName"], [data-testid="UserCell"]';
   const badgeSelector = ".xfc-badge";
   const users = new Map();
+  const card = globalThis.__xfcCard;
+  card.init({ getUser: handle => users.get(handle), formatAge: formatAccountAge });
   const dirty = new Set();
   const reserved = new Set(["home", "explore", "search", "notifications", "messages", "settings", "compose", "i", "intent", "share", "login", "logout", "signup", "tos", "privacy"]);
   let scheduled = false;
@@ -64,47 +92,60 @@
     return links.find(link => !link.textContent.trim().startsWith("@")) ?? links[0];
   }
 
+  function placeLabels(root, link, row) {
+    if (!root.matches('[data-testid="UserCell"]')) {
+      root.classList.add("xfc-header-row");
+      if (root.lastElementChild !== row) root.append(row);
+      return;
+    }
+    const handleLink = [...root.querySelectorAll('a[href]')].find(candidate =>
+      candidate.closest(rootSelector) === root && candidate.textContent.trim().startsWith("@") && profileHandle(candidate) === profileHandle(link)
+    );
+    let host = link.parentElement;
+    while (host !== root && handleLink && !host.contains(handleLink)) host = host.parentElement;
+    if (host !== root && handleLink) {
+      // A dedicated list header can hold the labels after name and handle,
+      // without moving X's links or touching the avatar / follow button / bio.
+      host.classList.add("xfc-header-row");
+      if (host.lastElementChild !== row) host.append(row);
+    } else {
+      const tail = handleLink ?? link.parentElement;
+      tail.classList.add("xfc-cell-tail");
+      if (tail.nextElementSibling !== row) tail.after(row);
+    }
+  }
+
   function render(root) {
     if (!root.isConnected) return;
     const link = nameLink(root);
     const handle = link && profileHandle(link);
     const user = handle ? users.get(handle) : undefined;
-    const count = user?.followersCount;
-    const badges = [...root.querySelectorAll(badgeSelector)].filter(badge => badge.closest(rootSelector) === root);
-    let badge = badges.shift();
-    for (const duplicate of badges) duplicate.remove();
-    if (link) renderMetadata(root, link, user);
-    else {
-      root.querySelectorAll(".xfc-metadata").forEach(node => {
-        if (node.closest(rootSelector) === root) node.remove();
-      });
-      root.classList.remove("xfc-user-header");
-    }
-    if (count === undefined || !link) {
-      badge?.remove();
+    const owned = selector => [...root.querySelectorAll(selector)].filter(node => node.closest(rootSelector) === root);
+    let row = owned(".xfc-labels")[0];
+    owned(".xfc-labels").slice(1).forEach(node => node.remove());
+    const badges = owned(badgeSelector);
+    let badge = badges.shift(); badges.forEach(node => node.remove());
+    if (!link || !user) {
+      badge?.remove(); row?.remove(); owned(".xfc-metadata").forEach(node => node.remove());
       return;
     }
-    if (!badge) {
-      badge = document.createElement("span");
-      badge.className = "xfc-badge";
+    if (!row) { row = document.createElement("span"); row.className = "xfc-labels"; }
+    if (user.followersCount === undefined) badge?.remove();
+    else {
+      if (!badge) { badge = document.createElement("span"); badge.className = "xfc-badge"; }
+      const text = `粉丝 ${formatCount(user.followersCount)}`;
+      if (badge.textContent !== text) badge.textContent = text;
+      const tier = countTier(user.followersCount);
+      if (badge.dataset.xfcTier !== tier) badge.dataset.xfcTier = tier;
+      if (row.firstElementChild !== badge) row.prepend(badge);
+      card.bind(badge, handle);
     }
-    const text = `粉丝 ${formatCount(count)}`;
-    const title = `@${handle} · ${count.toLocaleString("en-US")} 位粉丝（来自页面已加载的数据）`;
-    if (badge.textContent !== text) badge.textContent = text;
-    if (badge.title !== title) {
-      badge.title = title;
-      badge.setAttribute("aria-label", title);
-    }
-    if (badge.dataset.xfcHandle !== handle) badge.dataset.xfcHandle = handle;
-    // Use the unrounded count, including when an existing card is reused.
-    const tier = countTier(count);
-    if (badge.dataset.xfcTier !== tier) badge.dataset.xfcTier = tier;
-    link.parentElement.classList.add("xfc-name-row");
-    link.classList.add("xfc-name-link");
-    if (link.nextElementSibling !== badge) link.after(badge);
+    renderMetadata(root, user, row);
+    if (!row.childElementCount) { row.remove(); return; }
+    placeLabels(root, link, row);
   }
 
-  function renderMetadata(root, link, user) {
+  function renderMetadata(root, user, container) {
     const rows = [...root.querySelectorAll(".xfc-metadata")].filter(node => node.closest(rootSelector) === root);
     let row = rows.shift();
     rows.forEach(node => node.remove());
@@ -116,13 +157,13 @@
     } else if (user?.following === true) {
       labels.push({ kind: "following", text: "你已关注", title: "你关注了对方" });
     }
-    if (isNewAccount(user?.createdAt)) {
-      const date = new Date(user.createdAt).toLocaleDateString("zh-CN", { timeZone: "UTC" });
-      labels.push({ kind: "new", text: "新号", title: `注册于 ${date}（UTC），注册未满 90 天` });
+    const age = formatAccountAge(user?.createdAt);
+    if (age) {
+      const date = new Date(user.createdAt).toISOString().slice(0, 19).replace("T", " ");
+      labels.push({ kind: age === "新号" ? "new" : "age", text: age, title: `注册于 ${date}（UTC）` });
     }
     if (!labels.length) {
       row?.remove();
-      root.classList.remove("xfc-user-header");
       return;
     }
     if (!row) {
@@ -139,26 +180,15 @@
       }
       if (badge.dataset.xfcKind !== label.kind) badge.dataset.xfcKind = label.kind;
       if (badge.textContent !== label.text) badge.textContent = label.text;
-      const title = `${label.title}（来自页面已加载的数据）`;
+      const title = label.title;
       if (badge.title !== title) {
         badge.title = title;
         badge.setAttribute("aria-label", title);
       }
     }
+    for (const badge of row.children) card.bind(badge, user.screenName);
     while (row.children.length > labels.length) row.lastElementChild.remove();
-    // Dedicated headers can wrap a secondary row. UserCell's outer container
-    // also holds the avatar, biography and follow button, so use its name column.
-    if (!root.matches('[data-testid="UserCell"]')) {
-      root.classList.add("xfc-user-header");
-      if (root.lastElementChild !== row) root.append(row);
-    } else {
-      let container = link.parentElement.parentElement;
-      if (!root.contains(container)) container = root;
-      const handleLink = [...container.querySelectorAll("a[href]")].find(a => a !== link && profileHandle(a) === profileHandle(link) && a.textContent.trim().startsWith("@"));
-      let anchor = handleLink || link;
-      while (anchor.parentElement !== container) anchor = anchor.parentElement;
-      if (anchor.nextElementSibling !== row) anchor.after(row);
-    }
+    if (container.lastElementChild !== row) container.append(row);
   }
 
   function updateTheme() {
@@ -172,10 +202,12 @@
   }
 
   function schedule(all = false) {
+    if (!runtime.active()) return;
     refreshAll ||= all;
     if (scheduled || !document.body) return;
     scheduled = true;
     requestAnimationFrame(() => {
+      if (!runtime.active()) return;
       scheduled = false;
       updateTheme();
       if (refreshAll) {
@@ -189,14 +221,23 @@
   }
 
   window.addEventListener("message", event => {
+    if (!runtime.active()) return;
     if (event.source !== window || event.origin !== location.origin || event.data?.channel !== channel) return;
     if (event.data.type === "reset") {
       users.clear();
+      card.hide();
       schedule(true);
       return;
     }
     if (event.data.type === "bridge-ready") {
-      window.postMessage({ channel, type: "ready" }, location.origin);
+      runtime.post({ channel, type: "ready" });
+      return;
+    }
+    if (event.data.type === "observations") {
+      const batch = event.data;
+      if (!Array.isArray(batch.users) || batch.users.length > maxBatch) return;
+      const observed = batch.users.map(normalizeUser).filter(Boolean);
+      runtime.send("observe", { users: observed }).then(result => { if (result?.ok) card.refresh(); }).catch(() => {});
       return;
     }
     if (event.data.type !== "users" || !Array.isArray(event.data.users) || event.data.users.length > maxBatch) return;
@@ -205,17 +246,18 @@
       const user = normalizeUser(value);
       if (!user) continue;
       const previous = users.get(user.screenName);
-      const merged = { ...previous, ...user };
-      if (!previous || ["followersCount", "following", "followedBy", "createdAt"].some(key => previous[key] !== merged[key])) changed = true;
+      const merged = { ...(previous?.userId && user.userId && previous.userId !== user.userId ? {} : previous), ...user };
+      if (!previous || Object.keys(merged).some(key => previous[key] !== merged[key])) changed = true;
       users.delete(user.screenName);
       users.set(user.screenName, merged);
     }
     while (users.size > maxUsers) users.delete(users.keys().next().value);
     if (changed) schedule(true);
-  });
-  window.postMessage({ channel, type: "ready" }, location.origin);
+  }, { signal: runtime.signal });
+  runtime.post({ channel, type: "ready" });
 
   function start() {
+    if (!runtime.active()) return;
     const observer = new MutationObserver(mutations => {
       for (const mutation of mutations) {
         const target = mutation.target.nodeType === Node.ELEMENT_NODE ? mutation.target : mutation.target.parentElement;
@@ -230,17 +272,26 @@
       if (dirty.size) schedule();
     });
     observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["href", "data-testid"] });
+    runtime.cleanup(() => observer.disconnect());
     const themeObserver = new MutationObserver(() => schedule());
     for (const node of [document.body, document.documentElement]) {
       themeObserver.observe(node, { attributes: true, attributeFilter: ["class", "style"] });
     }
-    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => schedule());
-    // Recheck the 90-day boundary while a page stays open; no network work.
-    setInterval(() => {
-      if (document.querySelector('.xfc-meta-badge[data-xfc-kind="new"]')) schedule(true);
+    runtime.cleanup(() => themeObserver.disconnect());
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => schedule(), { signal: runtime.signal });
+    // Recheck age labels while a page stays open; no network work.
+    const ageTimer = setInterval(() => {
+      if (!runtime.active()) return;
+      if (document.querySelector('.xfc-meta-badge[data-xfc-kind="new"], .xfc-meta-badge[data-xfc-kind="age"]')) schedule(true);
     }, 60000);
+    runtime.cleanup(() => clearInterval(ageTimer));
     schedule(true);
   }
+  runtime.cleanup(() => {
+    users.clear(); dirty.clear(); card.hide();
+    document.querySelectorAll(".xfc-labels").forEach(node => node.remove());
+    document.querySelectorAll(".xfc-header-row, .xfc-cell-tail").forEach(node => node.classList.remove("xfc-header-row", "xfc-cell-tail"));
+  });
   if (document.body) start();
-  else document.addEventListener("DOMContentLoaded", start, { once: true });
+  else document.addEventListener("DOMContentLoaded", start, { once: true, signal: runtime.signal });
 })();

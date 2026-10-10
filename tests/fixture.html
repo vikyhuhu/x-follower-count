@@ -39,7 +39,7 @@
   <article id="tweet">
     <div data-testid="User-Name">
       <div class="name-group"><a href="/Lauren">Lauren <span class="check">✓</span></a></div>
-      <a class="handle" href="/Lauren">@Lauren</a>
+      <a class="handle" href="/Lauren">@Lauren</a><a class="tweet-time" href="/Lauren/status/1"><time>· 2h</time></a>
     </div>
     <p>时间线作者的粉丝数显示在名字旁。</p>
     <div class="quote" id="quote">
@@ -58,7 +58,14 @@
   </section>
   <p style="padding:16px" id="response-state" aria-live="polite">等待测试响应</p>
 </main>
+<div id="native-hover-card" hidden>模拟 X 原生名片</div>
 <script>
+  // X's native name hover wrapper must not also own extension labels.
+  const nativeName = document.querySelector('#tweet .name-group');
+  const nativeCard = document.querySelector('#native-hover-card');
+  let nativeTimer;
+  nativeName.addEventListener('pointerenter', () => { nativeTimer = setTimeout(() => nativeCard.hidden = false, 150); });
+  nativeName.addEventListener('pointerleave', () => { clearTimeout(nativeTimer); nativeCard.hidden = true; });
   document.querySelector('#fetch').onclick = async () => {
     const response = await fetch('/i/api/graphql/fixture/HomeTimeline');
     const payload = await response.json();

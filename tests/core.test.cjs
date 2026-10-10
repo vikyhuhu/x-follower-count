@@ -17,7 +17,7 @@ test("extract nested old/new X user shapes, including zero, without mixing users
     { screen_name: "Bad", followers_count: -1 },
     { screen_name: "BadString", followers_count: "42" }
   ] } };
-  const users = Object.fromEntries(data.extractUsers(payload).map(user => [user.screenName, user.followersCount]));
+  const users = Object.fromEntries(data.extractUsers(payload).filter(user => user.followersCount !== undefined).map(user => [user.screenName, user.followersCount]));
   assert.deepEqual(users, { metrics: 20, zero: 0, tim: 11000, lauren: 174000 });
 });
 
@@ -37,7 +37,7 @@ test("current X relationship_counts layout uses total followers, including zero"
     { result: { __typename: "User", core: { screen_name: "CurrentZero" }, relationship_counts: { followers: 0, following: 99 } } },
     { result: { __typename: "User", core: { screen_name: "FollowingOnly" }, relationship_counts: { following: 123 } } }
   ] } };
-  const users = Object.fromEntries(data.extractUsers(payload).map(user => [user.screenName, user.followersCount]));
+  const users = Object.fromEntries(data.extractUsers(payload).filter(user => user.followersCount !== undefined).map(user => [user.screenName, user.followersCount]));
   assert.deepEqual(users, { currentzero: 0, currentuser: 48495 });
 });
 
@@ -48,8 +48,8 @@ test("Chinese compact display and zero are accurate", () => {
 });
 
 test("only X API responses are inspected", () => {
-  for (const url of ["/i/api/graphql/abc/HomeTimeline", "https://api.x.com/1.1/users/show.json", "https://twitter.com/i/api/2/test"]) assert.equal(data.isApiUrl(url, "https://x.com/home"), true);
-  for (const url of ["https://evilx.com/i/api/test", "https://x.com.evil.test/i/api/test", "/settings", "http://x.com/i/api/test", "https://example.com/i/api/graphql/abc"]) assert.equal(data.isApiUrl(url, "https://x.com/home"), false);
+  for (const url of ["/i/api/graphql/abc/HomeTimeline", "https://api.x.com/1.1/users/show.json"]) assert.equal(data.isApiUrl(url, "https://x.com/home"), true);
+  for (const url of ["https://evilx.com/i/api/test", "https://x.com.evil.test/i/api/test", "/settings", "https://twitter.com/i/api/2/test", "/i/api/graphql/abc/DmInbox", "/i/api/graphql/abc/CreateTweet", "http://x.com/i/api/test", "https://example.com/i/api/graphql/abc"]) assert.equal(data.isApiUrl(url, "https://x.com/home"), false);
 });
 
 function bridgeHarness(fetch, extra = {}) {
@@ -142,15 +142,17 @@ test("bridge replays early counts and rejects messages from other sources", () =
   harness.listeners.get("message")({ source: {}, origin: "https://x.com", data: { channel: data.channel, type: "ready" } });
   assert.equal(harness.posts.length, before);
   harness.listeners.get("message")({ source: harness.window, origin: "https://x.com", data: { channel: data.channel, type: "ready" } });
-  assert.equal(harness.posts.length, before + 1);
+  assert.equal(harness.posts.length, before + 2);
   assert.equal(harness.posts.at(-1).users[0].screenName, "alice");
 });
 
 test("manifest restricts injection to X and contains only existing local files", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(extension, "manifest.json")));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.permissions, undefined);
-  assert.equal(manifest.background, undefined);
+  assert.deepEqual(manifest.permissions, ["storage"]);
+  assert.deepEqual(manifest.background, {service_worker: "background.js"});
+  assert.equal(fs.existsSync(path.join(extension, manifest.background.service_worker)), true);
+  assert.equal(fs.existsSync(path.join(extension, manifest.action.default_popup)), true);
   for (const script of manifest.content_scripts) {
     assert.equal(script.run_at, "document_start");
     for (const name of [...script.js, ...(script.css ?? [])]) assert.equal(fs.existsSync(path.join(extension, name)), true);
@@ -224,4 +226,34 @@ test("viewer changes reset caches and discard responses started for the previous
   xhr.open("GET", "/i/api/graphql/test/UserByScreenName"); xhr.send();
   xhr.finish({ core: { screen_name: "Alice" }, relationship_perspectives: { following: false } }, "json");
   assert.equal(harness.posts.at(-1).users[0].following, false);
+});
+
+
+test("account age shows completed UTC years/months and handles month-end anniversaries", () => {
+  const now = Date.parse("2026-10-10T12:00:00Z");
+  for (const [created, label] of [
+    ["2026-10-09T12:00:00Z", "新号"],
+    ["2026-02-10T12:00:00Z", "8个月"],
+    ["2023-02-10T12:00:00Z", "3年8个月"],
+    ["2023-10-10T12:00:00Z", "3年"],
+    ["2023-10-10T12:00:01Z", "2年11个月"],
+    ["2026-10-11T12:00:00Z", null]
+  ]) assert.equal(data.formatAccountAge(Date.parse(created), now), label);
+  assert.equal(data.formatAccountAge(now - 90*86400000 + 1, now), "新号");
+  assert.notEqual(data.formatAccountAge(now - 90*86400000, now), "新号");
+  assert.equal(data.formatAccountAge(Date.parse("2025-10-31T12:00:00Z"), Date.parse("2026-02-28T12:00:00Z")), "4个月");
+  assert.equal(data.formatAccountAge(Date.parse("2024-02-29T12:00:00Z"), Date.parse("2025-02-28T12:00:00Z")), "1年");
+  for (const invalid of [undefined, null, NaN, -1, "2023-10-10"]) assert.equal(data.formatAccountAge(invalid, now), null);
+});
+
+
+test("private endpoints and POST responses are never cloned or parsed", async () => {
+  let clones = 0;
+  const harness = bridgeHarness(() => Promise.resolve({ok:true,clone(){clones++;throw new Error("must not inspect");}}));
+  await harness.window.fetch("/i/api/graphql/test/DmInbox");
+  await harness.window.fetch("/i/api/graphql/test/HomeTimeline", {method:"POST"});
+  await harness.window.fetch({url:"https://x.com/i/api/graphql/test/Followers",method:"POST"});
+  const xhr=new harness.XHR();xhr.open("POST","/i/api/graphql/test/Followers");xhr.send();
+  assert.equal(xhr.events.size,0);
+  await settle();assert.equal(clones,0);
 });

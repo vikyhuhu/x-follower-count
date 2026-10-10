@@ -1,0 +1,6 @@
+:root { color-scheme: light dark; font: 13px/1.6 system-ui,sans-serif; }
+body { width: 292px; margin: 0; padding: 18px; } h1 { font-size: 18px; margin: 0; } p { margin: 10px 0; }
+fieldset { border: 1px solid #87949e; border-radius: 8px; padding: 10px 12px; } label { display: block; margin: 5px 0; } input { margin-right: 8px; }
+button { font: inherit; padding: 7px 10px; border-radius: 6px; border: 1px solid #87949e; cursor: pointer; } .note { opacity: .8; font-size: 12px; }
+[hidden] { display: none !important; } :focus-visible { outline: 2px solid #1689cf; outline-offset: 2px; }
+.privacy-page { width: auto; max-width: 720px; margin: 24px auto; padding: 24px; } .privacy-page h2 { font-size: 16px; margin-top: 24px; } a { color: #1689cf; }

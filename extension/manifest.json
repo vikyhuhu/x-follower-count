@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "X 粉丝数",
-  "version": "1.0.4",
-  "description": "在 X 用户名称区域显示粉丝数、关注关系和注册未满 90 天的新号标签。数据只保存在当前页面。",
+  "version": "1.2.0",
+  "description": "在 X 名字旁显示粉丝数、关系与账号年龄；统一详情卡展示账号数据和近七天趋势。记录仅保存在本机。",
   "minimum_chrome_version": "111",
   "icons": {
     "16": "icons/icon-16.png",
@@ -15,21 +15,52 @@
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png"
-    }
+    },
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {
-      "matches": ["https://x.com/*", "https://www.x.com/*", "https://twitter.com/*", "https://www.twitter.com/*"],
-      "js": ["content.js"],
-      "css": ["content.css"],
+      "matches": [
+        "https://x.com/*",
+        "https://www.x.com/*",
+        "https://twitter.com/*",
+        "https://www.twitter.com/*"
+      ],
+      "js": [
+        "runtime.js",
+        "history.js",
+        "card.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
       "run_at": "document_start",
       "world": "ISOLATED"
     },
     {
-      "matches": ["https://x.com/*", "https://www.x.com/*", "https://twitter.com/*", "https://www.twitter.com/*"],
-      "js": ["data.js", "network.js"],
+      "matches": [
+        "https://x.com/*",
+        "https://www.x.com/*",
+        "https://twitter.com/*",
+        "https://www.twitter.com/*"
+      ],
+      "js": [
+        "data.js",
+        "network.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     }
-  ]
+  ],
+  "permissions": [
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "homepage_url": "https://github.com/vikyhuhu/x-follower-count",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
 }

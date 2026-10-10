@@ -33,22 +33,31 @@
   }
 
   function consume(payload) {
+    const observed = extractUsers(payload);
     const changed = [];
-    for (const user of extractUsers(payload)) {
+    for (const user of observed) {
       const previous = cache.get(user.screenName);
       // Missing fields are unknown; explicit false must overwrite earlier true.
-      const merged = { ...previous, ...user };
+      const merged = { ...(previous?.userId && user.userId && previous.userId !== user.userId ? {} : previous), ...user };
       cache.delete(user.screenName);
       cache.set(user.screenName, merged);
-      if (!previous || ["followersCount", "following", "followedBy", "createdAt"].some(key => previous[key] !== merged[key])) changed.push(merged);
+      if (!previous || Object.keys(merged).some(key => previous[key] !== merged[key])) changed.push(merged);
     }
     while (cache.size > maxUsers) cache.delete(cache.keys().next().value);
     send(changed);
+    for (let index = 0; index < observed.length; index += maxBatch) {
+      window.postMessage({ channel, type: "observations", users: observed.slice(index, index + maxBatch) }, location.origin);
+    }
   }
 
   window.addEventListener("message", event => {
     if (event.source !== window || event.origin !== location.origin) return;
-    if (event.data?.channel === channel && event.data.type === "ready") send([...cache.values()]);
+    if (event.data?.channel === channel && event.data.type === "ready") {
+      send([...cache.values()]);
+      const users = [...cache.values()];
+      for (let index = 0; index < users.length; index += maxBatch)
+        window.postMessage({ channel, type: "observations", users: users.slice(index, index + maxBatch) }, location.origin);
+    }
   });
 
   const originalFetch = window.fetch;
@@ -59,7 +68,7 @@
       const pending = Reflect.apply(originalFetch, this, args);
       try {
         const url = typeof args[0] === "string" || args[0] instanceof URL ? String(args[0]) : args[0]?.url;
-        if (isApiUrl(url, location.href)) {
+        if (String(args[1]?.method ?? args[0]?.method ?? "GET").toUpperCase() === "GET" && isApiUrl(url, location.href)) {
           pending.then(response => {
             if (response.ok) return response.clone().json().then(payload => {
               if (requestEpoch === epoch) consume(payload);
@@ -78,12 +87,13 @@
   const originalSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (...args) {
     const result = Reflect.apply(originalOpen, this, args);
-    xhrUrls.set(this, args[1]);
+    xhrUrls.set(this, { url: args[1], method: String(args[0]).toUpperCase() });
     return result;
   };
   XMLHttpRequest.prototype.send = function (...args) {
     const requestEpoch = epoch;
-    if (isApiUrl(xhrUrls.get(this), location.href)) {
+    const request = xhrUrls.get(this);
+    if (request?.method === "GET" && isApiUrl(request.url, location.href)) {
       this.addEventListener("loadend", () => {
         try {
           if (requestEpoch !== epoch || this.status < 200 || this.status >= 300) return;
