@@ -1,9 +1,22 @@
 {
   "manifest_version": 3,
   "name": "X 粉丝数",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "将 X 页面已有响应里的粉丝数量显示在用户名字旁。数据只保存在当前页面。",
   "minimum_chrome_version": "111",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "X 粉丝数",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
   "content_scripts": [
     {
       "matches": ["https://x.com/*", "https://www.x.com/*", "https://twitter.com/*", "https://www.twitter.com/*"],
