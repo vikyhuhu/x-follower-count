@@ -1,13 +1,13 @@
 (() => {
   "use strict";
-  const DAY = 86400000, KEEP_DAYS = 30, MAX_USERS = 1000, MAX_BYTES = 8 * 1024 * 1024;
+  const DAY = 86400000, KEEP_DAYS = 30, MAX_USERS = 10000, MAX_BYTES = 8 * 1024 * 1024;
   const defaults = Object.freeze({ recording: true, verification: true, media: true, category: true, website: true });
   const validId = value => typeof value === "string" && /^\d{1,40}$/.test(value);
   const validCount = value => Number.isSafeInteger(value) && value >= 0;
   function dayKey(time) { return new Date(time + 8 * 3600000).toISOString().slice(0, 10); }
   function empty() { return { version: 1, users: {}, settings: { ...defaults } }; }
   function settings(value) { return Object.fromEntries(Object.entries(defaults).map(([key, fallback]) => [key, typeof value?.[key] === "boolean" ? value[key] : fallback])); }
-  function prune(state, now = Date.now()) {
+  function prune(state, now = Date.now(), maxBytes = MAX_BYTES) {
     const cutoff = now - KEEP_DAYS * DAY;
     const users = {};
     for (const [id, user] of Object.entries(state.users)) {
@@ -25,12 +25,23 @@
     state.users = users;
     state.settings = settings(state.settings);
     const ordered = Object.entries(users).sort((a, b) => a[1].lastSeen - b[1].lastSeen);
-    while (ordered.length > MAX_USERS) delete users[ordered.shift()[0]];
-    while (ordered.length && new TextEncoder().encode(JSON.stringify(state)).byteLength > MAX_BYTES) delete users[ordered.shift()[0]];
+    let removed = 0;
+    while (ordered.length - removed > MAX_USERS) delete users[ordered[removed++][0]];
+    // Measure once, then subtract evicted entries. Re-encoding the entire
+    // history for every eviction becomes expensive with thousands of users.
+    const encoder = new TextEncoder();
+    let bytes = encoder.encode(JSON.stringify(state)).byteLength;
+    let remaining = ordered.length - removed;
+    while (removed < ordered.length && bytes > maxBytes) {
+      const [id, record] = ordered[removed++];
+      bytes -= encoder.encode(`${JSON.stringify(id)}:${JSON.stringify(record)}`).byteLength + (remaining > 1 ? 1 : 0);
+      delete users[id];
+      remaining--;
+    }
     return state;
   }
-  function observe(state, users, now = Date.now()) {
-    prune(state, now);
+  function observe(state, users, now = Date.now(), maxBytes = MAX_BYTES) {
+    prune(state, now, maxBytes);
     for (const user of users) {
       if (!validId(user.userId) || !validCount(user.followersCount)) continue;
       const record = state.users[user.userId] ??= { userId: user.userId, lastSeen: now, days: {} };
@@ -40,7 +51,7 @@
       if (now < daily.first.at) daily.first = snapshot;
       if (now >= daily.last.at) daily.last = snapshot;
     }
-    return prune(state, now);
+    return prune(state, now, maxBytes);
   }
   function series(record, now = Date.now()) {
     const followers = Array.from({ length: 7 }, (_, i) => {

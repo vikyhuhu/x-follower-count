@@ -2,6 +2,9 @@
 importScripts("data.js", "history.js");
 const storageKey = "xfc-history-v1";
 const model = globalThis.__xfcHistory;
+// Chrome 111–113 have a smaller local quota. Keep headroom for settings and
+// storage accounting without asking for broader permissions.
+const historyBudget = Math.min(model.MAX_BYTES, (chrome.storage.local.QUOTA_BYTES ?? model.MAX_BYTES + 512 * 1024) - 512 * 1024);
 let state, queue = Promise.resolve();
 async function load() {
   if (!state) {
@@ -9,7 +12,7 @@ async function load() {
     state = result?.version === 1 && result.users && typeof result.users === "object" && !Array.isArray(result.users) ? result : model.empty();
   }
   const before = JSON.stringify(state);
-  model.prune(state);
+  model.prune(state, Date.now(), historyBudget);
   // Persist migration and expiry even when recording is disabled.
   if (before !== JSON.stringify(state)) await chrome.storage.local.set({ [storageKey]: state });
 }
@@ -25,7 +28,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         if (!state.settings.recording) return { ok: true };
         if (!Array.isArray(message.users) || message.users.length > 500) throw new Error("Invalid batch");
         const users = message.users.map(globalThis.__xfcData.normalizeUser).filter(Boolean);
-        model.observe(state, users);
+        model.observe(state, users, Date.now(), historyBudget);
         changed = true; break;
       }
       case "get":
