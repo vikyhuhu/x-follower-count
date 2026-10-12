@@ -165,7 +165,7 @@
     const age = formatAccountAge(user?.createdAt);
     if (age) {
       const date = new Date(user.createdAt).toISOString().slice(0, 19).replace("T", " ");
-      labels.push({ kind: age === "新号" ? "new" : "age", text: age, title: `注册于 ${date}（UTC）` });
+      labels.push({ kind: age === "新号" ? "new" : age.includes("年") ? "age" : "recent", text: age, title: `注册于 ${date}（UTC）` });
     }
     if (!labels.length) {
       row?.remove();

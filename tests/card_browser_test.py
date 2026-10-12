@@ -74,11 +74,14 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-card-") as 
     assert abs((title_bounds["y"] + title_bounds["height"]/2) - (status_bounds["y"] + status_bounds["height"]/2)) < 2
     expect(card.locator(".xfc-facts").get_by_text("174,000", exact=True)).to_be_visible()
     expect(card.get_by_text("544:1", exact=True)).to_be_visible()
+    expect(card.locator(".xfc-ratio-pill")).to_have_text("544:1")
+    expect(card.locator(".xfc-ratio-pill")).to_have_css("border-top-width", "1px")
     expect(card.get_by_text("1,578", exact=True)).to_be_visible()
     expect(card.get_by_text("专业账号类别", exact=True)).to_be_visible()
     labels = card.locator(".xfc-facts dt").all_text_contents()
     assert labels[labels.index("总发帖数") + 1] == "含图片/视频的帖数"
     media_label = card.locator("dt").filter(has_text="含图片/视频的帖数")
+    expect(media_label.locator("xpath=following-sibling::dd[1]")).to_have_text("45（3%）")
     assert media_label.evaluate("e => e.scrollWidth <= e.clientWidth && e.getBoundingClientRect().height <= parseFloat(getComputedStyle(e).lineHeight) + 1"), "Media label must fit on one line"
 
     expect(card.locator(".xfc-chart-section")).to_have_count(1)
@@ -86,12 +89,13 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-card-") as 
     expect(card.get_by_role("button", name="清除此账号记录")).to_have_count(0)
     expect(card.locator(".xfc-chart-caption, .xfc-chart-detail, .xfc-footnote, .xfc-range")).to_have_count(0)
     expect(card.locator(".xfc-bar")).to_have_count(5)
+    expect(card.locator(".xfc-trend-summary")).to_have_text("▲2,600（幅度1.52%）")
     columns = card.locator(".xfc-bar-column")
     assert columns.first.get_attribute("data-day") == day(now - timedelta(days=6)), "First observed day belongs on the left"
     assert columns.nth(1).get_attribute("data-count") is None, "An unobserved day must stay blank, never zero"
     expect(columns.first.locator(".xfc-bar-value")).to_have_text("171,400")
     expect(columns.last.locator(".xfc-bar-value")).to_have_text("174,000")
-    assert card.locator(".xfc-bar").first.evaluate("e => e.getBoundingClientRect().height") < card.locator(".xfc-bar").last.evaluate("e => e.getBoundingClientRect().height")
+    assert card.locator(".xfc-bar").last.evaluate("e => e.getBoundingClientRect().height") - card.locator(".xfc-bar").first.evaluate("e => e.getBoundingClientRect().height") > 60, "Small relative changes must still be visually distinct"
     for value in card.locator(".xfc-bar-value").all():
         assert value.evaluate("e => e.scrollWidth <= e.clientWidth"), "Exact counts must fit on one line"
     before = card.inner_text()
@@ -162,6 +166,8 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-card-") as 
     expect(card.locator(".xfc-bar-column")).to_have_count(1)
     expect(card.locator(".xfc-bar-value")).to_have_text("0")
     expect(card.locator(".xfc-bar-date")).to_have_text(day(now)[5:].replace("-", "/"))
+    expect(card.locator(".xfc-trend-summary")).to_have_count(0)
+    expect(card.locator(".xfc-history-note")).to_have_text("目前仅1天记录，后续浏览时继续积累")
     assert card.locator(".xfc-bar").evaluate("e => e.getBoundingClientRect().height") == 0
     expect(card.locator(".xfc-bars")).to_have_attribute("aria-label", f"近7天粉丝趋势，北京时间；{day(now)}：0位粉丝")
     page.screenshot(path=str(RESULTS/"card-first-day.png"))
@@ -196,7 +202,94 @@ with sync_playwright() as p, tempfile.TemporaryDirectory(prefix="xfc-card-") as 
     assert not errors, errors
     assert not failures, failures
     assert len(requests)==25, requests
-    summary={"result":"passed","browser":browser_version,"checks":["native and plugin hover cards stay separate","text relationship badges restored, ratio only in details", "ratio below one has one decimal, zero following is zero, missing stays unknown","identical hover card across labels","precise profile facts and zero following","post statistics and collection removed","bar labels, gaps and first observation at left","zero shown without hover","keyboard","light/dark/320px","page reload and real browser restart","no post body or relationships in storage","single clear removed, all clear works","optional settings","no additional network request"],"page_errors":errors,"failed_requests":failures,"requests":requests}
+    context.close()
+    # Fresh real-extension profiles exercise rising, falling, flat and zero-base
+    # histories without modifying production state or inferring missing days.
+    scenarios = [
+        ("rise", [16835,16891,16956], 8769,1581, "▲121（幅度0.72%）", "up", "1,581（18%）"),
+        ("fall", [16956,None,16835], 8769,1581, "▼121（幅度0.71%）", "down", "1,581（18%）"),
+        ("flat", [16835,16835,16835], 8769,0, "持平（幅度0.00%）", "flat", "0（0%）"),
+        ("zero-base", [0,None,5], 0,0, "▲5（幅度—）", "up", "0"),
+        ("zero-flat", [0,None,0], None,5, "持平（幅度0.00%）", "flat", "5"),
+        ("to-zero", [5,None,0], 10,2, "▼5（幅度100.00%）", "down", "2（20%）"),
+    ]
+    for name, counts, total, media, expected, trend, expected_media in scenarios:
+        with tempfile.TemporaryDirectory(prefix=f"xfc-trend-{name}-") as scenario_profile:
+            context = p.chromium.launch_persistent_context(scenario_profile, **options)
+            page = setup(context)
+            worker = context.service_workers[0] if context.service_workers else context.wait_for_event("serviceworker")
+            scenario_seed = {"version":1,"users":{"1":{"userId":"1","lastSeen":ms(now),"days":{}}},"settings":seed["settings"]}
+            for offset, count in enumerate(counts[:-1]):
+                if count is None:
+                    continue
+                date = now - timedelta(days=2-offset)
+                snapshot = {"at":ms(date),"count":count}
+                scenario_seed["users"]["1"]["days"][day(date)] = {"first":snapshot,"last":snapshot}
+            worker.evaluate("seed => chrome.storage.local.set({'xfc-history-v1':seed})", scenario_seed)
+            case = json.loads(json.dumps(user))
+            case["relationship_counts"]["followers"] = counts[-1]
+            case["tweet_counts"] = {"media_tweets":media, **({"tweets":total} if total is not None else {})}
+            payload["data"]["users"] = [case,other]
+            page.goto("https://x.com/__xfc_test")
+            page.get_by_role("button", name="载入时间线").click()
+            page.locator("#tweet > [data-testid='User-Name'] .xfc-badge").focus()
+            card = page.get_by_role("dialog", name="账号详情")
+            expect(card.locator(".xfc-trend-summary")).to_have_text(expected)
+            expect(card.locator(".xfc-chart-section")).to_have_attribute("data-trend", trend)
+            expect(card.locator(".xfc-trend-icon")).to_have_count(0 if trend == "flat" else 1)
+            expect(card.locator("dt").filter(has_text="含图片/视频的帖数").locator("xpath=following-sibling::dd[1]")).to_have_text(expected_media)
+            heights = card.locator(".xfc-bar").evaluate_all("bars => bars.map(e => e.getBoundingClientRect().height)")
+            assert all(0 <= height <= 84 for height in heights), heights
+            if name in ["rise","fall"]:
+                assert abs(heights[-1] - heights[0]) > 60, heights
+                expect(card.locator(".xfc-chart-scale")).to_have_text("按本账号数值范围缩放")
+                color = "rgb(196, 44, 58)" if trend == "up" else "rgb(23, 116, 67)"
+                assert card.locator(".xfc-trend-summary").evaluate("e => getComputedStyle(e).color") == color
+                assert card.locator(".xfc-bar").first.evaluate("e => getComputedStyle(e).backgroundColor") == color
+            if name == "flat":
+                assert max(heights) == min(heights)
+            if name == "fall":
+                assert card.locator(".xfc-bar-column").nth(1).get_attribute("data-count") is None
+                page.screenshot(path=str(RESULTS/"trend-fall.png"))
+            if name == "rise":
+                # The full card fits the viewport even when it cannot fit on
+                # either side of a middle/lower trigger. Never shrink to one side.
+                trigger = page.locator("#tweet > [data-testid='User-Name'] .xfc-badge")
+                for top in [460,740]:
+                    trigger.evaluate("(e, top) => Object.assign(e.style, {position:'fixed', top:top+'px', left:'520px'})", top)
+                    trigger.press("Enter")
+                    expect(card).to_have_css("max-height", "944px")
+                    layout = card.evaluate("e => ({fits:e.scrollHeight <= e.clientHeight, top:e.getBoundingClientRect().top, bottom:e.getBoundingClientRect().bottom})")
+                    assert layout["fits"] and layout["top"] >= 8 and layout["bottom"] <= 952, layout
+                trigger.evaluate("e => { e.style.position=''; e.style.top=''; e.style.left=''; }")
+                trigger.press("Enter")
+                page.screenshot(path=str(RESULTS/"trend-rise.png"))
+                for width in [320,390]:
+                    page.set_viewport_size({"width":width,"height":720})
+                    expect(card).to_have_css("width", f"{min(320, width-16)}px")
+                    bounds = card.bounding_box()
+                    assert bounds["x"] >= 0 and bounds["x"] + bounds["width"] <= width
+                    assert card.evaluate("e => e.scrollWidth <= e.clientWidth")
+                    for value in card.locator(".xfc-trend-summary, .xfc-bar-value").all():
+                        assert value.evaluate("e => e.scrollWidth <= e.clientWidth")
+                    page.screenshot(path=str(RESULTS/f"trend-rise-{width}.png"))
+                page.keyboard.press("Escape")
+                expect(card).to_be_hidden()
+                page.get_by_role("button", name="切换深色").click()
+                expect(page.locator("html")).to_have_attribute("data-xfc-theme", "dark")
+                page.locator("#tweet > [data-testid='User-Name'] .xfc-badge").press("Enter")
+                expect(card).to_be_visible()
+                expect(card.locator(".xfc-trend-summary")).to_have_css("color", "rgb(255, 136, 145)")
+                expect(card.locator(".xfc-ratio-pill")).to_have_css("color", "rgb(139, 208, 250)")
+                page.screenshot(path=str(RESULTS/"trend-rise-dark.png"))
+                page.set_viewport_size({"width":320,"height":360})
+                expect(card).to_have_css("max-height", "344px")
+                assert card.evaluate("e => e.scrollHeight > e.clientHeight && e.getBoundingClientRect().top >= 8 && e.getBoundingClientRect().bottom <= 352"), "A viewport shorter than the card must remain scrollable"
+                page.keyboard.press("Escape")
+                expect(card).to_be_hidden()
+            context.close()
+    assert not errors, errors
+    assert not failures, failures
+    summary={"result":"passed","browser":browser_version,"checks":["native and plugin hover cards stay separate","text relationship badges restored, ratio only in details", "ratio below one has one decimal, zero following is zero, missing stays unknown","identical hover card across labels","precise profile facts and zero following","media share rounded; zero and missing total omit percentage","small follower changes visibly scaled against own range","first/last net change and percentage; red rise and green fall","flat and zero-base histories","post statistics and collection removed","bar labels, gaps and first observation at left","zero shown without hover","keyboard","light/dark/320px/390px","page reload and real browser restart","no post body or relationships in storage","single clear removed, all clear works","optional settings","no additional network request"],"page_errors":errors,"failed_requests":failures,"requests":requests}
     (RESULTS/"card-browser-summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2))
     print(json.dumps(summary,ensure_ascii=False,indent=2))
-    context.close()

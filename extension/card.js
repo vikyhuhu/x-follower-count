@@ -39,17 +39,21 @@
     const rect = anchor.getBoundingClientRect(), width = Math.min(320, innerWidth - 16);
     if (rect.bottom < 0 || rect.top > innerHeight) { hide(); return; }
     card.style.width = `${width}px`;
+    card.style.maxHeight = "none";
     for (const value of card.querySelectorAll(".xfc-bar-value")) {
       value.style.fontSize = "10px";
       if (value.scrollWidth > value.clientWidth) value.style.fontSize = `${10 * value.clientWidth / value.scrollWidth * .95}px`;
     }
-    const below = Math.max(0, innerHeight - rect.bottom - 15), above = Math.max(0, rect.top - 15);
-    const placeBelow = below >= Math.min(520, card.scrollHeight) || below >= above;
-    const available = Math.max(60, placeBelow ? below : above);
+    // Prefer the complete card, moving it within the viewport when neither
+    // side of the trigger has enough room. Scroll only if the viewport itself
+    // is shorter than the card, not merely the space above/below the trigger.
+    const available = Math.max(1, innerHeight - 16);
+    const height = Math.min(card.getBoundingClientRect().height, available);
+    const below = innerHeight - rect.bottom - 15, above = rect.top - 15;
+    const desiredTop = below >= height ? rect.bottom + 7 : above >= height ? rect.top - height - 7 : rect.bottom + 7;
     card.style.maxHeight = `${available}px`;
-    const height = Math.min(card.scrollHeight, available);
     card.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - width - 8))}px`;
-    card.style.top = `${Math.max(8, placeBelow ? rect.bottom + 7 : rect.top - height - 7)}px`;
+    card.style.top = `${Math.max(8, Math.min(desiredTop, innerHeight - height - 8))}px`;
   }
   function hide() {
     clearTimeout(timer); clearTimeout(hideTimer); request++;
@@ -65,12 +69,35 @@
   }
   function followerChart(parent, entries) {
     const section = element("section", "xfc-chart-section");
-    section.append(element("h3", "", "近7天粉丝趋势"));
+    const heading = element("div", "xfc-chart-heading");
+    heading.append(element("h3", "", "近7天粉丝趋势"));
     // Start at the first observed day in the seven-day window. Missing days
     // inside that span stay blank rather than becoming zero or inferred values.
     const first = entries.findIndex(day => day.count !== null);
     const visible = first < 0 ? [] : entries.slice(first);
-    const maximum = Math.max(1, ...visible.map(day => day.count ?? 0));
+    const observed = visible.filter(day => day.count !== null);
+    const minimum = Math.min(...observed.map(day => day.count));
+    const maximum = Math.max(1, ...observed.map(day => day.count));
+    const range = observed.length ? observed.at(-1).count - observed[0].count : 0;
+    if (observed.length >= 2) {
+      section.dataset.trend = range > 0 ? "up" : range < 0 ? "down" : "flat";
+      const percent = observed[0].count > 0 ? `${(Math.abs(range) / observed[0].count * 100).toFixed(2)}%` : range === 0 ? "0.00%" : "—";
+      const summary = element("span", "xfc-trend-summary");
+      if (range !== 0) {
+        const icon = element("span", "xfc-trend-icon", range > 0 ? "▲" : "▼");
+        icon.setAttribute("aria-hidden", "true"); summary.append(icon);
+      }
+      summary.append(element("strong", "xfc-trend-change", range === 0 ? "持平" : number(Math.abs(range))), element("span", "xfc-trend-rate", `（幅度${percent}）`));
+      summary.title = `${observed[0].day} 至 ${observed.at(-1).day}，按首末已记录值计算${observed[0].count === 0 && range !== 0 ? "；起始粉丝数为0，无法计算变化百分比" : ""}`;
+      summary.setAttribute("aria-label", `粉丝${range > 0 ? "增加" : range < 0 ? "减少" : "变化"}${number(Math.abs(range))}，变化幅度${percent === "—" ? "无法计算，起始粉丝数为0" : percent}`);
+      heading.append(summary);
+    }
+    section.append(heading);
+    if (observed.length === 1) section.append(element("p", "xfc-history-note", "目前仅1天记录，后续浏览时继续积累"));
+    // Expand small changes relative to this account's own range. Leave a
+    // quarter-range below the minimum so its bar and exact label stay visible.
+    const baseline = minimum < maximum ? Math.max(0, minimum - (maximum - minimum) * .25) : 0;
+    if (baseline > 0) section.append(element("p", "xfc-chart-scale", "按本账号数值范围缩放"));
     const plot = element("div", "xfc-bars");
     plot.setAttribute("role", "img");
     plot.setAttribute("aria-label", visible.length ? `近7天粉丝趋势，北京时间；${visible.map(day => `${day.day}：${day.count === null ? "未获取" : number(day.count) + "位粉丝"}`).join("；")}` : "近7天粉丝趋势，暂无记录");
@@ -82,7 +109,7 @@
         column.dataset.count = String(entry.count);
         track.append(element("span", "xfc-bar-value", number(entry.count)));
         const bar = element("div", "xfc-bar");
-        bar.style.height = `${entry.count / maximum * 84}px`;
+        bar.style.height = `${(entry.count - baseline) / (maximum - baseline) * 84}px`;
         track.append(bar);
       }
       column.append(track, element("span", "xfc-bar-date", entry.day.slice(5).replace("-", "/")));
@@ -107,9 +134,14 @@
     pair(list, "关注数", number(user.followingCount)); pair(list, "粉丝数", number(user.followersCount));
     const value = user.followersCount / user.followingCount;
     const ratio = user.followingCount === 0 ? "0" : user.followersCount === undefined || user.followingCount === undefined ? "—" : `${value < 1 ? value.toFixed(1) : Math.round(value).toLocaleString("en-US")}:1`;
-    pair(list, "粉关比", ratio); pair(list, "总发帖数", number(user.tweetCount));
+    const ratioValue = pair(list, "粉关比", ratio);
+    if (ratio !== "—") ratioValue.replaceChildren(element("span", "xfc-ratio-pill", ratio));
+    pair(list, "总发帖数", number(user.tweetCount));
     const options = result.settings ?? history.defaults;
-    if (options.media && user.mediaCount !== undefined) pair(list, "含图片/视频的帖数", number(user.mediaCount));
+    if (options.media && user.mediaCount !== undefined) {
+      const share = history.validCount(user.mediaCount) && history.validCount(user.tweetCount) && user.tweetCount > 0 ? `（${Math.round(user.mediaCount / user.tweetCount * 100)}%）` : "";
+      pair(list, "含图片/视频的帖数", `${number(user.mediaCount)}${share}`);
+    }
     const age = config.formatAge(user.createdAt);
     pair(list, "账号年龄", age === "新号" ? `${Math.floor((Date.now() - user.createdAt) / history.DAY)}天` : age || "—");
     pair(list, "注册时间", age ? `${new Date(user.createdAt).toISOString().slice(0, 19).replace("T", " ")} UTC` : "—").className = "xfc-date";

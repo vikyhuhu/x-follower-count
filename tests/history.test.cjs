@@ -68,10 +68,31 @@ test("legacy storage is minimized on first load, without automatically starting 
 });
 test("retention evicts oldest accounts and stays below byte budget",()=>{
   const state=h.empty();
-  for(let i=0;i<1001;i++)h.observe(state,[{...user,userId:String(i)}],now+i);
-  assert.equal(Object.keys(state.users).length,1000);assert.equal(state.users["0"],undefined);
+  for(let i=0;i<=h.MAX_USERS;i++) {
+    const snapshot={at:now+i,count:100};
+    state.users[String(i)]={userId:String(i),lastSeen:now+i,days:{[h.dayKey(now+i)]:{first:snapshot,last:snapshot}}};
+  }
+  h.prune(state,now+h.MAX_USERS);
+  assert.equal(h.MAX_USERS,10000);
+  assert.equal(Object.keys(state.users).length,h.MAX_USERS);assert.equal(state.users["0"],undefined);
+  assert.ok(state.users["1"],"Accounts beyond the former 1000-user cap must retain history");
   assert.ok(new TextEncoder().encode(JSON.stringify(state)).byteLength<h.MAX_BYTES);
   h.prune(state,now+32*h.DAY);assert.equal(Object.keys(state.users).length,0);
+});
+test("expanded history evicts oldest users by bytes before exceeding the storage budget",()=>{
+  const state=h.empty();
+  const days={};
+  for(let offset=0;offset<30;offset++) {
+    const snapshot={at:now-offset*h.DAY,count:99999999};
+    days[h.dayKey(snapshot.at)]={first:snapshot,last:snapshot};
+  }
+  for(let i=0;i<3000;i++)state.users[String(i)]={userId:String(i),lastSeen:now-3000+i,days};
+  assert.ok(new TextEncoder().encode(JSON.stringify(state)).byteLength>h.MAX_BYTES);
+  h.prune(state,now);
+  assert.ok(Object.keys(state.users).length<3000);
+  assert.equal(state.users["0"],undefined);
+  assert.ok(state.users["2999"]);
+  assert.ok(new TextEncoder().encode(JSON.stringify(state)).byteLength<=h.MAX_BYTES);
 });
 test("expiry is written back while recording is disabled without restarting the worker",async()=>{
   let clock=now,saved=h.empty(),handler;
@@ -82,4 +103,24 @@ test("expiry is written back while recording is disabled without restarting the 
   const status=()=>new Promise(resolve=>handler({channel:"xfc-local",type:"status"},{id:"test",url:"chrome-extension://test/popup.html"},resolve));
   assert.equal((await status()).users,1);
   clock+=32*h.DAY;assert.equal((await status()).users,0);assert.equal(Object.keys(saved.users).length,0);
+});
+test("older Chrome quota bounds history during load and later observations",async()=>{
+  const at=Date.now(),quota=5*1024*1024,budget=quota-512*1024;
+  let saved=h.empty(),handler;
+  const days={};
+  for(let offset=0;offset<30;offset++) {
+    const snapshot={at:at-offset*h.DAY,count:99999999};
+    days[h.dayKey(snapshot.at)]={first:snapshot,last:snapshot};
+  }
+  for(let i=0;i<2000;i++)saved.users[String(i)]={userId:String(i),lastSeen:at-2000+i,days};
+  const size=value=>new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  assert.ok(size(saved)>quota);
+  const chrome={runtime:{id:"test",onMessage:{addListener:fn=>handler=fn}},storage:{local:{QUOTA_BYTES:quota,get:async()=>({'xfc-history-v1':structuredClone(saved)}),set:async value=>{assert.ok(size(value)<=quota,"Writes must fit the actual browser quota");saved=structuredClone(value['xfc-history-v1']);},getBytesInUse:async()=>size(saved)}}};
+  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,"../extension/background.js"),"utf8"),{chrome,Date,__xfcData:data,__xfcHistory:h,importScripts:()=>{}});
+  const send=(type,extra={})=>new Promise(resolve=>handler({channel:"xfc-local",type,...extra},{id:"test",url:"https://x.com/home",tab:{id:1}},resolve));
+  assert.equal((await send("status")).ok,true);
+  assert.ok(size(saved)<=budget);
+  assert.equal((await send("observe",{users:[{...user,userId:"9000"}]})).ok,true);
+  assert.ok(size(saved)<=budget);
+  assert.equal(saved.users["9000"].days[h.dayKey(Date.now())].last.count,100);
 });

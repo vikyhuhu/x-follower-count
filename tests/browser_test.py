@@ -125,7 +125,7 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
             assert "查看 @" in label.get_attribute("aria-label")
             assert label.get_attribute("aria-haspopup") == "dialog"
         for selector, months in [("#quote", 8), ("#nested", 44)]:
-            label = page.locator(selector + " [data-xfc-kind='age']")
+            label = page.locator(selector + (" [data-xfc-kind='recent']" if months < 12 else " [data-xfc-kind='age']"))
             assert "号龄" not in label.inner_text()
         assert_inline_metadata()
         assert "粉丝 17.4万" in page.locator("#tweet > [data-testid='User-Name'] .xfc-badge").get_attribute("aria-label")
