@@ -5,7 +5,7 @@ import json
 
 ROOT = Path(__file__).resolve().parents[1]
 manifest = json.loads((ROOT / "extension" / "manifest.json").read_text())
-FILES = ("manifest.json", "runtime.js", "data.js", "network.js", "content.js", "content.css", "history.js", "card.js", "background.js", "popup.html", "popup.js", "popup.css", "privacy.html", *sorted(set(manifest["icons"].values())))
+FILES = ("manifest.json", "runtime.js", "data.js", "network.js", "content.js", "content.css", "post-signals.js", "history.js", "card.js", "background.js", "popup.html", "popup.js", "popup.css", "privacy.html", *sorted(set(manifest["icons"].values())))
 version = manifest["version"]
 (ROOT / "dist").mkdir(exist_ok=True)
 def put(archive, name, content):

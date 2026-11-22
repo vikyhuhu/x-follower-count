@@ -105,6 +105,39 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
         # Inspect the rendered page before choosing browser assertions.
         print("Fixture headings:", page.get_by_role("heading").all_text_contents())
         expect(page.locator(".xfc-badge")).to_have_count(0)
+        # Post signals read the native action bar before the page requests any data.
+        labels = page.locator("#tweet .xfc-post-signal")
+        expect(labels).to_have_text(["收藏/赞 200%", "转 44 / 评 399"])
+        expect(labels.nth(0)).to_have_attribute("data-xfc-tone", "save")
+        expect(labels.nth(1)).to_have_attribute("data-xfc-tone", "discussion")
+        expect(labels.nth(0)).to_have_css("color", "rgb(23, 96, 61)")
+        expect(labels.nth(1)).to_have_css("color", "rgb(151, 71, 11)")
+        page.get_by_role("button", name="切换深色").click()
+        expect(labels.nth(0)).to_have_css("color", "rgb(161, 229, 188)")
+        expect(labels.nth(1)).to_have_css("color", "rgb(255, 197, 138)")
+        page.get_by_role("button", name="切换深色").click()
+        expect(labels.nth(0)).to_have_css("color", "rgb(23, 96, 61)")
+        assert len(requests) == 1, requests
+
+        actions = page.locator("#post-actions")
+        actions.evaluate("bar => bar.setAttribute('aria-label', '10 条回复，10 次转发，100 个喜欢，30 次收藏')")
+        expect(labels).to_have_text(["收藏/赞 30%", "转 10 / 评 10"])
+        expect(labels.nth(1)).to_have_attribute("data-xfc-tone", "share")
+        actions.evaluate("""bar => {
+          bar.removeAttribute('aria-label');
+          bar.querySelector('[data-testid="like"]').setAttribute('aria-label', '1.2K likes. Like');
+          bar.querySelector('[data-testid="bookmark"]').textContent = '600';
+          bar.querySelector('[data-testid="reply"]').setAttribute('aria-label', '2 Replies. Reply');
+          bar.querySelector('[data-testid="retweet"]').setAttribute('aria-label', '4 Reposts. Repost');
+        }""")
+        expect(labels).to_have_text(["收藏/赞 约 50%", "转 4 / 评 2"])
+        actions.evaluate("""bar => {
+          bar.querySelector('[data-testid="like"]').setAttribute('aria-label', '0 Likes. Like');
+        }""")
+        expect(labels).to_have_text(["转 4 / 评 2"])
+        actions.evaluate("bar => bar.remove()")
+        expect(labels).to_have_count(0)
+        assert len(requests) == 1, requests
         page.get_by_role("button", name="载入时间线").click()
         expect(page.locator("#tweet > [data-testid='User-Name'] .xfc-badge")).to_have_text("粉丝 17.4万")
         expect(page.locator("#quote .xfc-badge")).to_have_text("粉丝 1.1万")

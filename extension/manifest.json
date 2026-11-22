@@ -30,6 +30,7 @@
         "runtime.js",
         "history.js",
         "card.js",
+        "post-signals.js",
         "content.js"
       ],
       "css": [

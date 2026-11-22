@@ -3,6 +3,7 @@
   // Execution worlds are independent. Keep this UI receiver self-contained;
   // Chrome can deduplicate a file declared in multiple content-script entries.
   const runtime = globalThis.__xfcRuntime;
+  const postSignals = globalThis.__xfcPostSignals;
   const channel = "x-follower-count:v1";
   const maxUsers = 10000;
   const maxBatch = 500;
@@ -66,6 +67,7 @@
   const card = globalThis.__xfcCard;
   card.init({ getUser: handle => users.get(handle), formatAge: formatAccountAge });
   const dirty = new Set();
+  const dirtyPosts = new Set();
   const reserved = new Set(["home", "explore", "search", "notifications", "messages", "settings", "compose", "i", "intent", "share", "login", "logout", "signup", "tos", "privacy"]);
   let scheduled = false;
   let refreshAll = false;
@@ -222,6 +224,9 @@
       const roots = [...dirty];
       dirty.clear();
       roots.forEach(render);
+      const posts = [...dirtyPosts];
+      dirtyPosts.clear();
+      posts.forEach(postSignals.render);
     });
   }
 
@@ -266,17 +271,27 @@
     const observer = new MutationObserver(mutations => {
       for (const mutation of mutations) {
         const target = mutation.target.nodeType === Node.ELEMENT_NODE ? mutation.target : mutation.target.parentElement;
+        const group = target?.closest(postSignals.groupSelector);
+        const post = target?.closest(postSignals.tweetSelector);
+        if (post && (group || target === post ||
+          [...mutation.addedNodes, ...mutation.removedNodes].some(node =>
+            node.nodeType === Node.ELEMENT_NODE &&
+            (node.matches(postSignals.groupSelector) || node.querySelector(postSignals.groupSelector))
+          ))) dirtyPosts.add(post);
+        if (mutation.attributeName === "aria-label") continue;
         const owner = target?.closest(rootSelector);
         if (owner) dirty.add(owner);
         for (const node of mutation.addedNodes) {
           if (node.nodeType !== Node.ELEMENT_NODE) continue;
           if (node.matches(rootSelector)) dirty.add(node);
           node.querySelectorAll(rootSelector).forEach(root => dirty.add(root));
+          if (node.matches(postSignals.tweetSelector)) dirtyPosts.add(node);
+          node.querySelectorAll(postSignals.tweetSelector).forEach(addedPost => dirtyPosts.add(addedPost));
         }
       }
-      if (dirty.size) schedule();
+      if (dirty.size || dirtyPosts.size) schedule();
     });
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["href", "data-testid"] });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["href", "data-testid", "aria-label"] });
     runtime.cleanup(() => observer.disconnect());
     const themeObserver = new MutationObserver(() => schedule());
     for (const node of [document.body, document.documentElement]) {
@@ -290,11 +305,12 @@
       if (document.querySelector('.xfc-meta-badge[data-xfc-kind="new"], .xfc-meta-badge[data-xfc-kind="age"]')) schedule(true);
     }, 60000);
     runtime.cleanup(() => clearInterval(ageTimer));
+    document.querySelectorAll(postSignals.tweetSelector).forEach(post => dirtyPosts.add(post));
     schedule(true);
   }
   runtime.cleanup(() => {
-    users.clear(); dirty.clear(); card.hide();
-    document.querySelectorAll(".xfc-labels").forEach(node => node.remove());
+    users.clear(); dirty.clear(); dirtyPosts.clear(); card.hide();
+    document.querySelectorAll(".xfc-labels, ." + postSignals.rowClass).forEach(node => node.remove());
     document.querySelectorAll(".xfc-header-row, .xfc-list-header").forEach(node => node.classList.remove("xfc-header-row", "xfc-list-header"));
   });
   if (document.body) start();

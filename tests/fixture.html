@@ -36,7 +36,7 @@
     <button id="theme">切换深色</button>
     <button id="broken">失败响应</button>
   </div>
-  <article id="tweet">
+  <article id="tweet" data-testid="tweet">
     <div data-testid="User-Name">
       <div class="name-group"><a href="/Lauren">Lauren <span class="check">✓</span></a></div>
       <a class="handle" href="/Lauren">@Lauren</a><a class="tweet-time" href="/Lauren/status/1"><time>· 2h</time></a>
@@ -48,6 +48,12 @@
         <a class="handle" href="/Tim">@Tim</a>
       </div>
       <p>引用的作者拥有独立的数字。</p>
+    </div>
+    <div id="post-actions" role="group" aria-label="399 replies, 44 reposts, 100 likes, 200 bookmarks">
+      <button data-testid="reply" aria-label="Reply"></button>
+      <button data-testid="retweet" aria-label="Repost"></button>
+      <button data-testid="like" aria-label="Like"></button>
+      <button data-testid="bookmark" aria-label="Bookmark"></button>
     </div>
   </article>
   <section aria-label="用户列表">

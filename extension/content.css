@@ -160,3 +160,26 @@
 .xfc-bar-date { display: block; padding-top: 6px; font-size: 10px; color: var(--xfc-muted); }
 .xfc-card .xfc-error { margin-top: 6px; color: var(--xfc-accent); }
 .xfc-card :focus-visible { outline: 2px solid var(--xfc-accent); outline-offset: 2px; }
+
+.xfc-post-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-block-start: 4px;
+  font: 600 11px/16px system-ui, sans-serif;
+}
+.xfc-post-signal {
+  border-radius: 4px;
+  padding: 1px 5px;
+  background: #eef0f2;
+  color: #53616d;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.xfc-post-signal[data-xfc-tone="save"] { background: #e7f5ed; color: #17603d; }
+.xfc-post-signal[data-xfc-tone="share"] { background: #e8f4fd; color: #08679d; }
+.xfc-post-signal[data-xfc-tone="discussion"] { background: #fff0de; color: #97470b; }
+:root[data-xfc-theme="dark"] .xfc-post-signal { background: #303a43; color: #c4cdd5; }
+:root[data-xfc-theme="dark"] .xfc-post-signal[data-xfc-tone="save"] { background: #1f3a2c; color: #a1e5bc; }
+:root[data-xfc-theme="dark"] .xfc-post-signal[data-xfc-tone="share"] { background: #153349; color: #8bd0fa; }
+:root[data-xfc-theme="dark"] .xfc-post-signal[data-xfc-tone="discussion"] { background: #482e18; color: #ffc58a; }
