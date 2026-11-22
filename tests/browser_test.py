@@ -14,8 +14,12 @@ from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
 EXTENSION = Path(os.environ.get("EXTENSION_UNDER_TEST", str(ROOT / "extension")))
-RESULTS = ROOT / "test-results"
-RESULTS.mkdir(exist_ok=True)
+TEST_ORIGIN = os.environ.get("XFC_TEST_ORIGIN", "https://x.com")
+if TEST_ORIGIN not in {"https://x.com", "https://pro.x.com"}:
+    raise ValueError("Unsupported fixture origin")
+TEST_PAGE = TEST_ORIGIN + ("/i/decks/__xfc_test" if TEST_ORIGIN == "https://pro.x.com" else "/__xfc_test")
+RESULTS = ROOT / "test-results" / ("x-pro" if TEST_ORIGIN == "https://pro.x.com" else "x")
+RESULTS.mkdir(parents=True, exist_ok=True)
 PAYLOAD = {"data": {"entries": [
     {"user_results": {"result": {"__typename": "User", "core": {"screen_name": "Lauren"}, "relationship_counts": {"followers": 174000, "following": 100}}}},
     {"core": {"screen_name": "Tim"}, "legacy": {"followers_count": 11000}},
@@ -76,7 +80,7 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
 
     def route_request(route):
         url = route.request.url
-        if url == "https://x.com/__xfc_test":
+        if url == TEST_PAGE:
             route.fulfill(content_type="text/html", body=(ROOT / "tests/fixture.html").read_text())
         elif "/i/api/graphql/fixture/Broken" in url:
             # A successful HTTP response containing non-JSON is another safe failure case.
@@ -101,7 +105,7 @@ with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="xfc-br
             assert item["left"] >= item["anchorRight"] and item["right"] <= item["viewport"], item
 
     try:
-        page.goto("https://x.com/__xfc_test", wait_until="domcontentloaded")
+        page.goto(TEST_PAGE, wait_until="domcontentloaded")
         # Inspect the rendered page before choosing browser assertions.
         print("Fixture headings:", page.get_by_role("heading").all_text_contents())
         expect(page.locator(".xfc-badge")).to_have_count(0)

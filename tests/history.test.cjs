@@ -44,7 +44,7 @@ test("background defaults cannot be changed by pages; concurrent writes, restart
   let saved={},handler;
   const chrome={runtime:{id:"test",onMessage:{addListener:fn=>handler=fn}},storage:{local:{get:async key=>({[key]:structuredClone(saved[key])}),set:async value=>{await new Promise(r=>setTimeout(r,3));Object.assign(saved,structuredClone(value));},getBytesInUse:async()=>JSON.stringify(saved).length}}};
   const boot=()=>{const ctx=vm.createContext({chrome,Date,URL,__xfcData:data,__xfcHistory:h,importScripts:()=>{}});vm.runInContext(fs.readFileSync(path.resolve(__dirname,"../extension/background.js"),"utf8"),ctx);};
-  const send=(type,extra={},ui=false)=>new Promise(resolve=>handler({channel:"xfc-local",type,...extra},{id:"test",url:ui?"chrome-extension://test/popup.html":"https://x.com/home",tab:{id:1}},resolve));
+  const send=(type,extra={},ui=false)=>new Promise(resolve=>handler({channel:"xfc-local",type,...extra},{id:"test",url:ui?"chrome-extension://test/popup.html":"https://pro.x.com/i/decks/1",tab:{id:1}},resolve));
   boot();assert.equal((await send("status")).settings.recording,true);
   assert.equal((await send("settings",{settings:{recording:false}})).ok,false);
   await send("observe",{users:[user]});assert.equal(Object.keys(saved["xfc-history-v1"].users).length,1);

@@ -18,7 +18,7 @@ async function load() {
 }
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (!message || message.channel !== "xfc-local" || sender.id !== chrome.runtime.id) return;
-  if (sender.tab && !/^https:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//.test(sender.url ?? "") && !sender.url?.startsWith(`chrome-extension://${chrome.runtime.id}/`)) return;
+  if (sender.tab && !/^https:\/\/(?:pro\.x\.com|(?:www\.)?(?:x\.com|twitter\.com))\//.test(sender.url ?? "") && !sender.url?.startsWith(`chrome-extension://${chrome.runtime.id}/`)) return;
   const ownPage = sender.url?.startsWith(`chrome-extension://${chrome.runtime.id}/`);
   const task = queue.then(async () => {
     await load();

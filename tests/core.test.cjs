@@ -180,7 +180,7 @@ test("manifest restricts injection to X and contains only existing local files",
   for (const script of manifest.content_scripts) {
     assert.equal(script.run_at, "document_start");
     for (const name of [...script.js, ...(script.css ?? [])]) assert.equal(fs.existsSync(path.join(extension, name)), true);
-    assert.deepEqual(script.matches, ["https://x.com/*", "https://www.x.com/*", "https://twitter.com/*", "https://www.twitter.com/*"]);
+    assert.deepEqual(script.matches, ["https://x.com/*", "https://www.x.com/*", "https://pro.x.com/*", "https://twitter.com/*", "https://www.twitter.com/*"]);
   }
 });
 
@@ -282,6 +282,18 @@ test("private endpoints, write operations and unsupported verbs are never cloned
   await settle();assert.equal(clones,0);
 });
 
+
+test("X Pro allows only the same existing read queries", () => {
+  const base = "https://pro.x.com/i/decks/1";
+  assert.equal(data.isApiUrl("/i/api/graphql/fixture/HomeTimeline", base, "POST"), true);
+  assert.equal(data.isApiUrl("https://x.com/i/api/graphql/fixture/HomeLatestTimeline", base), true);
+  assert.equal(data.isApiUrl("/i/api/graphql/fixture/ListLatestTweetsTimeline", base), true);
+  for (const op of ["DmInbox", "CreateTweet", "FavoriteTweet", "UnknownQuery"]) {
+    assert.equal(data.isApiUrl("/i/api/graphql/fixture/" + op, base, "POST"), false);
+  }
+  assert.equal(data.isApiUrl("https://other.x.com/i/api/graphql/fixture/HomeTimeline", base), false);
+  assert.equal(data.isApiUrl("https://pro.x.com.example.com/i/api/graphql/fixture/HomeTimeline", base), false);
+});
 
 test("X read queries accept POST as well as GET without reading request bodies",async()=>{
  const url="https://x.com/i/api/graphql/test/HomeTimeline";

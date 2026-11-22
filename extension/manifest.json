@@ -23,6 +23,7 @@
       "matches": [
         "https://x.com/*",
         "https://www.x.com/*",
+        "https://pro.x.com/*",
         "https://twitter.com/*",
         "https://www.twitter.com/*"
       ],
@@ -42,6 +43,7 @@
       "matches": [
         "https://x.com/*",
         "https://www.x.com/*",
+        "https://pro.x.com/*",
         "https://twitter.com/*",
         "https://www.twitter.com/*"
       ],

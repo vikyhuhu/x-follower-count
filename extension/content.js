@@ -73,7 +73,7 @@
   function profileHandle(link) {
     try {
       const url = new URL(link.getAttribute("href"), location.href);
-      if (!/^(?:www\.)?(?:x\.com|twitter\.com)$/.test(url.hostname)) return null;
+      if (!/^(?:pro\.x\.com|(?:www\.)?(?:x\.com|twitter\.com))$/.test(url.hostname)) return null;
       const match = url.pathname.match(/^\/([a-z0-9_]{1,15})\/?$/i);
       if (!match || reserved.has(match[1].toLowerCase())) return null;
       return match[1].toLowerCase();
